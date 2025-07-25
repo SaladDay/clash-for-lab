@@ -3,7 +3,7 @@ system-proxy:
   enable: true
 
 # Web 控制台配置
-external-controller: "0.0.0.0:9090"
+external-controller: "0.0.0.0:19090"  # Higher port to avoid conflicts
 external-ui: public
 secret:
 
@@ -36,7 +36,7 @@ tun:
 # DNS 配置
 dns:
   enable: true
-  listen: 0.0.0.0:1053  # Non-privileged port (>1024) for userspace
+  listen: 0.0.0.0:15353  # Higher port to avoid conflicts in multi-user environment
   enhanced-mode: fake-ip
   nameserver:
     - 114.114.114.114

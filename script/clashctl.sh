@@ -61,6 +61,7 @@ function clashon() {
     
     _get_proxy_port
     _get_ui_port
+    _get_dns_port
     
     # Start mihomo process
     if start_mihomo; then
@@ -161,8 +162,10 @@ function clashstatus() {
         # Show proxy port status
         _get_proxy_port
         _get_ui_port
+        _get_dns_port
         _okcat "代理端口: $MIXED_PORT"
         _okcat "管理端口: $UI_PORT"
+        _okcat "DNS端口: $DNS_PORT"
         
         # Show system proxy status
         clashproxy status

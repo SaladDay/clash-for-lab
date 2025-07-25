@@ -142,7 +142,7 @@ _get_random_port() {
 
 function _get_proxy_port() {
     local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
-    MIXED_PORT=${mixed_port:-7890}
+    MIXED_PORT=${mixed_port:-17890}
 
     _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME" && {
         local newPort=$(_get_random_port)
@@ -156,13 +156,27 @@ function _get_proxy_port() {
 function _get_ui_port() {
     local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
     local ext_port=${ext_addr##*:}
-    UI_PORT=${ext_port:-9090}
+    UI_PORT=${ext_port:-19090}
 
     _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME" && {
         local newPort=$(_get_random_port)
         local msg="端口占用：${UI_PORT} 🎲 随机分配：$newPort"
         "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
         UI_PORT=$newPort
+        _failcat '🎯' "$msg"
+    }
+}
+
+function _get_dns_port() {
+    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' $MIHOMO_CONFIG_RUNTIME)
+    local dns_port=${dns_listen##*:}
+    DNS_PORT=${dns_port:-15353}
+
+    _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME" && {
+        local newPort=$(_get_random_port)
+        local msg="DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
+        DNS_PORT=$newPort
         _failcat '🎯' "$msg"
     }
 }
