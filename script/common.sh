@@ -8,7 +8,6 @@ URL_GH_PROXY='https://ghfast.top'
 URL_CLASH_UI="http://board.zash.run.place"
 
 SCRIPT_BASE_DIR='./script'
-SCRIPT_FISH="${SCRIPT_BASE_DIR}/clashctl.fish"
 
 RESOURCES_BASE_DIR='./resources'
 RESOURCES_BIN_DIR="${RESOURCES_BASE_DIR}/bin"
@@ -62,9 +61,7 @@ _set_var() {
     command -v zsh >&/dev/null && {
         SHELL_RC_ZSH="${home}/.zshrc"
     }
-    command -v fish >&/dev/null && {
-        SHELL_RC_FISH="${home}/.config/fish/conf.d/clashctl.fish"
-    }
+
 
     MIHOMO_CRON_TAB="user"  # 标记使用用户级crontab
     
@@ -99,13 +96,11 @@ _set_bin
 _set_rc() {
     [ "$1" = "unset" ] && {
         sed -i "\|$MIHOMO_SCRIPT_DIR|d" "$SHELL_RC_BASH" "$SHELL_RC_ZSH" 2>/dev/null
-        rm -f "$SHELL_RC_FISH" 2>/dev/null
         return
     }
 
     echo "source $MIHOMO_SCRIPT_DIR/common.sh && source $MIHOMO_SCRIPT_DIR/clashctl.sh && watch_proxy" |
         tee -a "$SHELL_RC_BASH" "$SHELL_RC_ZSH" >&/dev/null
-    [ -n "$SHELL_RC_FISH" ] && install $SCRIPT_FISH "$SHELL_RC_FISH"
 }
 
 # 默认集成、安装mihomo内核
