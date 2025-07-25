@@ -537,12 +537,12 @@ Usage:
     mihomoctl COMMAND [OPTION]
 
 Commands:
-    on                      开启代理 (用户空间进程)
-    off                     关闭代理 (停止用户进程)
+    on                      开启代理
+    off                     关闭代理
     restart                 重启代理服务
     proxy    [on|off]       系统代理环境变量
     ui                      Web 控制台地址
-    status                  进程运行状态 (包含订阅地址)
+    status                  进程运行状态
     tun      [on|off]       Tun 模式 (需要权限)
     mixin    [-e|-r]        Mixin 配置文件
     secret   [SECRET]       Web 控制台密钥

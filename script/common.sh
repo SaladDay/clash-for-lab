@@ -66,7 +66,6 @@ _set_var() {
         SHELL_RC_FISH="${home}/.config/fish/conf.d/clashctl.fish"
     }
 
-    # 用户级定时任务路径 - 使用用户crontab而不是系统crontab
     MIHOMO_CRON_TAB="user"  # 标记使用用户级crontab
     
     # Legacy compatibility
@@ -449,13 +448,11 @@ is_mihomo_running() {
     kill -0 "$pid" 2>/dev/null
 }
 
-# 统一处理端口冲突的函数
 _resolve_port_conflicts() {
     local config_file=$1
-    local show_message=${2:-true}  # 默认显示消息，可通过参数控制
+    local show_message=${2:-true} 
     local port_changed=false
     
-    # 检查代理端口
     local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$config_file")
     MIXED_PORT=${mixed_port:-17890}
     if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
@@ -466,7 +463,6 @@ _resolve_port_conflicts() {
         port_changed=true
     fi
     
-    # 检查UI端口
     local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$config_file")
     local ext_port=${ext_addr##*:}
     UI_PORT=${ext_port:-19090}
@@ -478,7 +474,6 @@ _resolve_port_conflicts() {
         port_changed=true
     fi
     
-    # 检查DNS端口
     local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$config_file")
     local dns_port=${dns_listen##*:}
     DNS_PORT=${dns_port:-15353}
@@ -490,7 +485,6 @@ _resolve_port_conflicts() {
         port_changed=true
     fi
     
-    # 显示端口分配结果
     if [ "$port_changed" = true ] && [ "$show_message" = true ]; then
         _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
     fi

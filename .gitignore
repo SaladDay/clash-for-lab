@@ -39,9 +39,7 @@ resources/bin/**
 *.orig
 
 # Test artifacts
-test/test_results/
-test/temp/
-test/*.tmp
+test/*
 
 # User configuration
 user_config.yaml
