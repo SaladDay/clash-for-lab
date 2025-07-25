@@ -59,9 +59,51 @@ function clashon() {
     "$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
         "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
     
-    _get_proxy_port
-    _get_ui_port
-    _get_dns_port
+    # Check and resolve port conflicts before starting mihomo
+    local port_changed=false
+    
+    # Check proxy port
+    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
+    MIXED_PORT=${mixed_port:-17890}
+    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        local msg="端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".mixed-port = $newPort" $MIHOMO_CONFIG_RUNTIME
+        MIXED_PORT=$newPort
+        _failcat '🎯' "$msg"
+        port_changed=true
+    fi
+    
+    # Check UI port
+    local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
+    local ext_port=${ext_addr##*:}
+    UI_PORT=${ext_port:-19090}
+    if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        local msg="UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
+        UI_PORT=$newPort
+        _failcat '🎯' "$msg"
+        port_changed=true
+    fi
+    
+    # Check DNS port
+    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' $MIHOMO_CONFIG_RUNTIME)
+    local dns_port=${dns_listen##*:}
+    DNS_PORT=${dns_port:-15353}
+    if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        local msg="DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
+        DNS_PORT=$newPort
+        _failcat '🎯' "$msg"
+        port_changed=true
+    fi
+    
+    # Show port assignment if any port was changed
+    if [ "$port_changed" = true ]; then
+        _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+    fi
     
     # Start mihomo process
     if start_mihomo; then

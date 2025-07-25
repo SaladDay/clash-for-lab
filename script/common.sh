@@ -135,7 +135,18 @@ function _get_kernel() {
 }
 
 _get_random_port() {
-    local randomPort=$(shuf -i 1024-65535 -n 1)
+    local randomPort
+    # Try shuf first (Linux), then use alternative methods
+    if command -v shuf >/dev/null 2>&1; then
+        randomPort=$(shuf -i 1024-65535 -n 1)
+    elif command -v jot >/dev/null 2>&1; then
+        # macOS/BSD
+        randomPort=$(jot -r 1 1024 65535)
+    else
+        # Fallback using RANDOM (bash/zsh)
+        randomPort=$((RANDOM % 64512 + 1024))
+    fi
+    
     ! _is_bind "$randomPort" && { echo "$randomPort" && return; }
     _get_random_port
 }
@@ -143,42 +154,18 @@ _get_random_port() {
 function _get_proxy_port() {
     local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
     MIXED_PORT=${mixed_port:-17890}
-
-    _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME" && {
-        local newPort=$(_get_random_port)
-        local msg="端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".mixed-port = $newPort" $MIHOMO_CONFIG_RUNTIME
-        MIXED_PORT=$newPort
-        _failcat '🎯' "$msg"
-    }
 }
 
 function _get_ui_port() {
     local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
     local ext_port=${ext_addr##*:}
     UI_PORT=${ext_port:-19090}
-
-    _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME" && {
-        local newPort=$(_get_random_port)
-        local msg="端口占用：${UI_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
-        UI_PORT=$newPort
-        _failcat '🎯' "$msg"
-    }
 }
 
 function _get_dns_port() {
     local dns_listen=$("$BIN_YQ" '.dns.listen // ""' $MIHOMO_CONFIG_RUNTIME)
     local dns_port=${dns_listen##*:}
     DNS_PORT=${dns_port:-15353}
-
-    _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME" && {
-        local newPort=$(_get_random_port)
-        local msg="DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
-        DNS_PORT=$newPort
-        _failcat '🎯' "$msg"
-    }
 }
 
 _get_color() {
