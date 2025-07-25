@@ -107,6 +107,37 @@ function clashon() {
     
     # Start mihomo process
     if start_mihomo; then
+        # Wait for mihomo to fully start and then get actual listening ports
+        sleep 2
+        
+        # Re-read actual ports from logs or process info
+        local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+        if [ -f "$log_file" ]; then
+            # Extract actual listening ports from log
+            local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
+            local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+            local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+            
+            # Update our variables with actual ports if they were found
+            if [ -n "$actual_proxy_port" ] && [ "$actual_proxy_port" != "$MIXED_PORT" ]; then
+                _failcat "🔄 mihomo自动调整代理端口: $MIXED_PORT → $actual_proxy_port"
+                MIXED_PORT=$actual_proxy_port
+            fi
+            
+            if [ -n "$actual_ui_port" ] && [ "$actual_ui_port" != "$UI_PORT" ]; then
+                _failcat "🔄 mihomo自动调整UI端口: $UI_PORT → $actual_ui_port"
+                UI_PORT=$actual_ui_port
+            fi
+            
+            if [ -n "$actual_dns_port" ] && [ "$actual_dns_port" != "$DNS_PORT" ]; then
+                _failcat "🔄 mihomo自动调整DNS端口: $DNS_PORT → $actual_dns_port"
+                DNS_PORT=$actual_dns_port
+            fi
+            
+            # Show final port assignment
+            _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+        fi
+        
         _set_system_proxy
         _okcat '已开启代理环境'
     else
