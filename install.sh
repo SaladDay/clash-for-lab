@@ -54,8 +54,14 @@ _set_rc
 # 重新设置二进制文件路径（现在指向用户目录）
 _set_bin
 
-# 合并配置并重启（使用用户级进程管理）
-_merge_config_restart
+# 合并配置
+mkdir -p "$(dirname "$MIHOMO_CONFIG_RUNTIME")"
+"$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
+    "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
+
+# 处理端口冲突并显示分配结果
+_okcat '🔧' '检查端口冲突...'
+_resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME"
 
 # 显示 Web UI 信息
 clashui

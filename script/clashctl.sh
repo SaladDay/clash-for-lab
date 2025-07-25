@@ -59,90 +59,59 @@ function clashon() {
     "$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
         "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
     
-    # Check and resolve port conflicts before starting mihomo
-    local port_changed=false
-    
-    # Check proxy port
-    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
-    MIXED_PORT=${mixed_port:-17890}
-    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
-        local newPort=$(_get_random_port)
-        local msg="端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".mixed-port = $newPort" $MIHOMO_CONFIG_RUNTIME
-        MIXED_PORT=$newPort
-        _failcat '🎯' "$msg"
-        port_changed=true
-    fi
-    
-    # Check UI port
-    local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
-    local ext_port=${ext_addr##*:}
-    UI_PORT=${ext_port:-19090}
-    if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
-        local newPort=$(_get_random_port)
-        local msg="UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
-        UI_PORT=$newPort
-        _failcat '🎯' "$msg"
-        port_changed=true
-    fi
-    
-    # Check DNS port
-    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' $MIHOMO_CONFIG_RUNTIME)
-    local dns_port=${dns_listen##*:}
-    DNS_PORT=${dns_port:-15353}
-    if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
-        local newPort=$(_get_random_port)
-        local msg="DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
-        DNS_PORT=$newPort
-        _failcat '🎯' "$msg"
-        port_changed=true
-    fi
-    
-    # Show port assignment if any port was changed
-    if [ "$port_changed" = true ]; then
-        _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
-    fi
+    # 只在启动前进行一次端口冲突检测，静默模式避免重复消息
+    _resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME" false
     
     # Start mihomo process
     if start_mihomo; then
-        # Wait for mihomo to fully start and then get actual listening ports
+        # Wait for mihomo to fully start
         sleep 2
         
-        # Re-read actual ports from logs or process info
-        local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
-        if [ -f "$log_file" ]; then
-            # Extract actual listening ports from log
-            local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
-            local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
-            local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
-            
-            # Update our variables with actual ports if they were found
-            if [ -n "$actual_proxy_port" ] && [ "$actual_proxy_port" != "$MIXED_PORT" ]; then
-                _failcat "🔄 mihomo自动调整代理端口: $MIXED_PORT → $actual_proxy_port"
-                MIXED_PORT=$actual_proxy_port
-            fi
-            
-            if [ -n "$actual_ui_port" ] && [ "$actual_ui_port" != "$UI_PORT" ]; then
-                _failcat "🔄 mihomo自动调整UI端口: $UI_PORT → $actual_ui_port"
-                UI_PORT=$actual_ui_port
-            fi
-            
-            if [ -n "$actual_dns_port" ] && [ "$actual_dns_port" != "$DNS_PORT" ]; then
-                _failcat "🔄 mihomo自动调整DNS端口: $DNS_PORT → $actual_dns_port"
-                DNS_PORT=$actual_dns_port
-            fi
-            
-            # Show final port assignment
-            _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
-        fi
+        # 验证实际端口是否与配置一致，只在不一致时提示
+        _verify_actual_ports
         
         _set_system_proxy
         _okcat '已开启代理环境'
     else
         _failcat '代理启动失败'
         return 1
+    fi
+}
+
+# 验证实际监听端口与配置是否一致
+_verify_actual_ports() {
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    [ ! -f "$log_file" ] && return 0
+    
+    # Extract actual listening ports from log
+    local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
+    local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+    local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+    
+    local port_changed=false
+    
+    # 只有当实际端口与配置端口不一致时才显示提示和更新变量
+    if [ -n "$actual_proxy_port" ] && [ "$actual_proxy_port" != "$MIXED_PORT" ]; then
+        _failcat "🔄" "mihomo自动调整代理端口: $MIXED_PORT → $actual_proxy_port"
+        MIXED_PORT=$actual_proxy_port
+        port_changed=true
+    fi
+    
+    if [ -n "$actual_ui_port" ] && [ "$actual_ui_port" != "$UI_PORT" ]; then
+        _failcat "🔄" "mihomo自动调整UI端口: $UI_PORT → $actual_ui_port"
+        UI_PORT=$actual_ui_port
+        port_changed=true
+    fi
+    
+    if [ -n "$actual_dns_port" ] && [ "$actual_dns_port" != "$DNS_PORT" ]; then
+        _failcat "🔄" "mihomo自动调整DNS端口: $DNS_PORT → $actual_dns_port"
+        DNS_PORT=$actual_dns_port
+        port_changed=true
+    fi
+    
+    # 只有当端口有变化时才显示最终端口分配
+    if [ "$port_changed" = true ]; then
+        _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
     fi
 }
 

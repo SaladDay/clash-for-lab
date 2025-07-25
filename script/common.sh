@@ -448,3 +448,52 @@ is_mihomo_running() {
     # Check if process is actually running
     kill -0 "$pid" 2>/dev/null
 }
+
+# 统一处理端口冲突的函数
+_resolve_port_conflicts() {
+    local config_file=$1
+    local show_message=${2:-true}  # 默认显示消息，可通过参数控制
+    local port_changed=false
+    
+    # 检查代理端口
+    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$config_file")
+    MIXED_PORT=${mixed_port:-17890}
+    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".mixed-port = $newPort" "$config_file"
+        MIXED_PORT=$newPort
+        port_changed=true
+    fi
+    
+    # 检查UI端口
+    local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$config_file")
+    local ext_port=${ext_addr##*:}
+    UI_PORT=${ext_port:-19090}
+    if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        [ "$show_message" = true ] && _failcat '🎯' "UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" "$config_file"
+        UI_PORT=$newPort
+        port_changed=true
+    fi
+    
+    # 检查DNS端口
+    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$config_file")
+    local dns_port=${dns_listen##*:}
+    DNS_PORT=${dns_port:-15353}
+    if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
+        local newPort=$(_get_random_port)
+        [ "$show_message" = true ] && _failcat '🎯' "DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
+        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" "$config_file"
+        DNS_PORT=$newPort
+        port_changed=true
+    fi
+    
+    # 显示端口分配结果
+    if [ "$port_changed" = true ] && [ "$show_message" = true ]; then
+        _okcat "端口分配完成 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+    fi
+    
+    return 0
+}
