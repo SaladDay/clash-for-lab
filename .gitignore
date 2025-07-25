@@ -1,5 +1,66 @@
-.idea
-.vscode
+# IDE and Editor files
+.idea/
+.vscode/
+.history/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Project specific
 config.yaml
 resources/bin/**
-!.gitkeep
+!resources/bin/.gitkeep
+
+# Runtime files
+*.pid
+*.log
+*.tmp
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Test artifacts
+test/test_results/
+test/temp/
+test/*.tmp
+
+# User configuration
+user_config.yaml
+local_config.yaml
+
+# Compiled binaries
+mihomo
+clash
+yq
+subconverter
+
+# Compressed files (except required resources)
+*.tar.gz
+*.zip
+*.7z
+!resources/zip/*.tar.xz
+!resources/zip/*.gz
+
+# Environment files
+.env
+.env.local
+.env.*.local

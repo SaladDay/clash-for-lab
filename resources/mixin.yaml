@@ -24,10 +24,11 @@ tun:
   auto-redir: true # clash
   auto-redirect: true # mihomo
   auto-detect-interface: true
-  dns-hijack:
-    - any:53
-    - tcp://any:53
-  strict-route: true
+  # DNS hijack disabled for userspace - requires root privileges
+  # dns-hijack:
+  #   - any:53
+  #   - tcp://any:53
+  strict-route: false  # Disabled for userspace compatibility
   exclude-interface:
     # - docker0
     # - podman0
@@ -35,7 +36,7 @@ tun:
 # DNS 配置
 dns:
   enable: true
-  listen: 0.0.0.0:1053
+  listen: 0.0.0.0:1053  # Non-privileged port (>1024) for userspace
   enhanced-mode: fake-ip
   nameserver:
     - 114.114.114.114

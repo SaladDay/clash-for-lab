@@ -1,4 +1,4 @@
-# Linux 一键安装 Clash
+# Linux 用户空间 Mihomo 代理
 
 ![GitHub License](https://img.shields.io/github/license/nelvko/clash-for-linux-install)
 ![GitHub top language](https://img.shields.io/github/languages/top/nelvko/clash-for-linux-install)
@@ -6,16 +6,20 @@
 
 ![preview](resources/preview.png)
 
-- 默认安装 `mihomo` 内核，[可选安装](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ#%E5%AE%89%E8%A3%85-clash-%E5%86%85%E6%A0%B8) `clash`。
-- 自动使用 [subconverter](https://github.com/tindy2013/subconverter) 进行本地订阅转换。
-- 多架构支持，适配主流 `Linux` 发行版：`CentOS 7.6`、`Debian 12`、`Ubuntu 24.04.1 LTS`。
+- **用户空间运行**：无需 `sudo` 权限，安装到用户目录 `~/tools/mihomo/`
+- 默认使用 `mihomo` 内核，支持最新的代理协议和功能
+- 自动使用 [subconverter](https://github.com/tindy2013/subconverter) 进行本地订阅转换
+- 多架构支持，适配主流 `Linux` 发行版：`CentOS 7.6`、`Debian 12`、`Ubuntu 24.04.1 LTS`
+- 基于 PID 文件的进程管理，无需 systemd 服务
 
 ## 快速开始
 
 ### 环境要求
 
-- 用户权限：`root`、`sudo`。（无权限可参考：[#91](https://github.com/nelvko/clash-for-linux-install/issues/91)）
-- `shell` 支持：`bash`、`zsh`、`fish`。
+- **用户权限**：普通用户权限即可，**无需 sudo 或 root**
+- **Shell 支持**：`bash`、`zsh`、`fish`
+- **系统要求**：Linux 系统，支持用户空间进程管理
+- **网络要求**：能够访问订阅链接和下载资源
 
 ### 一键安装
 
@@ -24,7 +28,7 @@
 ```bash
 git clone --branch master --depth 1 https://gh-proxy.com/https://github.com/nelvko/clash-for-linux-install.git \
   && cd clash-for-linux-install \
-  && sudo bash install.sh
+  && bash install.sh
 ```
 
 > 如遇问题，请在查阅[常见问题](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ)及 [issue](https://github.com/nelvko/clash-for-linux-install/issues?q=is%3Aissue) 未果后进行反馈。
@@ -47,12 +51,14 @@ Usage:
 Commands:
     on                   开启代理
     off                  关闭代理
+    restart              重启代理服务
     ui                   面板地址
-    status               内核状况
+    status               内核状况 (包含订阅地址)
     proxy    [on|off]    系统代理
     tun      [on|off]    Tun 模式
     mixin    [-e|-r]     Mixin 配置
     secret   [SECRET]    Web 密钥
+    subscribe [URL]      设置或查看订阅地址
     update   [auto|log]  更新订阅
 ```
 
@@ -92,6 +98,37 @@ $ clashsecret
 
 - 通过浏览器打开 Web 控制台，实现可视化操作：切换节点、查看日志等。
 - 控制台密钥默认为空，若暴露到公网使用建议更新密钥。
+
+### 重启服务
+
+```bash
+$ clashrestart
+😼 正在重启代理服务...
+😼 代理服务重启成功
+```
+
+- 快速重启代理服务，等同于先执行 `clashoff` 再执行 `clashon`
+- 重启后会自动重新加载配置文件
+
+### 订阅管理
+
+```bash
+$ clashsubscribe https://example.com
+😼 订阅地址已设置: https://example.com
+是否立即更新订阅配置? [y/N]: y
+
+$ clashsubscribe
+😼 当前订阅地址: https://example.com
+
+$ clashstatus
+😼 订阅地址: https://example.com
+😼 mihomo 进程状态: 运行中
+...
+```
+
+- `clashsubscribe` 用于设置和查看订阅地址
+- `clashstatus` 现在会显示当前的订阅地址
+- 设置新订阅地址时可选择立即更新配置
 
 ### 更新订阅
 
@@ -146,8 +183,42 @@ $ clashmixin -r
 ### 卸载
 
 ```bash
-sudo bash uninstall.sh
+bash uninstall.sh
 ```
+
+## 用户空间特性
+
+### 🏠 安装位置
+- **安装目录**: `~/tools/mihomo/`
+- **配置目录**: `~/tools/mihomo/config/`
+- **日志目录**: `~/tools/mihomo/logs/`
+- **二进制文件**: `~/tools/mihomo/bin/`
+
+### 🔧 进程管理
+- 使用 `nohup` 后台运行，无需 systemd
+- PID 文件管理: `~/tools/mihomo/config/mihomo.pid`
+- 用户级定时任务支持 (crontab)
+- 支持 SSH 断开后继续运行
+
+### 🛡️ 安全特性
+- 无需特权权限，降低安全风险
+- 使用非特权端口 (>1024)
+- 用户级配置文件权限控制
+- 环境变量级代理设置
+
+### 🧪 测试功能
+
+项目包含完整的测试套件来验证功能：
+
+```bash
+# 功能测试（测试已安装的系统）
+./test/functional_test.sh
+
+# 集成测试（完整安装和功能测试）
+./test/integration_test.sh
+```
+
+详细测试说明请参考 [test/README.md](test/README.md)
 
 ## 常见问题
 

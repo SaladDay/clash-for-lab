@@ -4,7 +4,7 @@
 [ -n "$BASH_VERSION" ] && set +o noglob
 [ -n "$ZSH_VERSION" ] && setopt glob no_nomatch
 
-URL_GH_PROXY='https://gh-proxy.com/'
+URL_GH_PROXY='https://ghfast.top'
 URL_CLASH_UI="http://board.zash.run.place"
 
 SCRIPT_BASE_DIR='./script'
@@ -22,22 +22,28 @@ ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
 ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
 ZIP_UI="${ZIP_BASE_DIR}/yacd.tar.xz"
 
-CLASH_BASE_DIR='/opt/clash'
-CLASH_SCRIPT_DIR="${CLASH_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
-CLASH_CONFIG_URL="${CLASH_BASE_DIR}/url"
-CLASH_CONFIG_RAW="${CLASH_BASE_DIR}/$(basename $RESOURCES_CONFIG)"
-CLASH_CONFIG_RAW_BAK="${CLASH_CONFIG_RAW}.bak"
-CLASH_CONFIG_MIXIN="${CLASH_BASE_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
-CLASH_CONFIG_RUNTIME="${CLASH_BASE_DIR}/runtime.yaml"
-CLASH_UPDATE_LOG="${CLASH_BASE_DIR}/clashupdate.log"
+MIHOMO_BASE_DIR="$HOME/tools/mihomo"
+MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
+MIHOMO_CONFIG_URL="${MIHOMO_BASE_DIR}/url"
+MIHOMO_CONFIG_RAW="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG)"
+MIHOMO_CONFIG_RAW_BAK="${MIHOMO_CONFIG_RAW}.bak"
+MIHOMO_CONFIG_MIXIN="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
+MIHOMO_CONFIG_RUNTIME="${MIHOMO_BASE_DIR}/runtime.yaml"
+MIHOMO_UPDATE_LOG="${MIHOMO_BASE_DIR}/mihomoctl.log"
+
+# Legacy compatibility - keep CLASH_* variables pointing to new locations
+CLASH_BASE_DIR="$MIHOMO_BASE_DIR"
+CLASH_SCRIPT_DIR="$MIHOMO_SCRIPT_DIR"
+CLASH_CONFIG_URL="$MIHOMO_CONFIG_URL"
+CLASH_CONFIG_RAW="$MIHOMO_CONFIG_RAW"
+CLASH_CONFIG_RAW_BAK="$MIHOMO_CONFIG_RAW_BAK"
+CLASH_CONFIG_MIXIN="$MIHOMO_CONFIG_MIXIN"
+CLASH_CONFIG_RUNTIME="$MIHOMO_CONFIG_RUNTIME"
+CLASH_UPDATE_LOG="$MIHOMO_UPDATE_LOG"
 
 _set_var() {
     local user=$USER
     local home=$HOME
-    [ -n "$SUDO_USER" ] && {
-        user=$SUDO_USER
-        home=$(awk -F: -v user="$SUDO_USER" '$1==user{print $6}' /etc/passwd)
-    }
 
     [ -n "$BASH_VERSION" ] && {
         _SHELL=bash
@@ -60,16 +66,17 @@ _set_var() {
         SHELL_RC_FISH="${home}/.config/fish/conf.d/clashctl.fish"
     }
 
-    # 定时任务路径
-    local os_info=$(cat /etc/os-release)
-    echo "$os_info" | grep -iqsE "rhel|centos" && CLASH_CRON_TAB="/var/spool/cron/$user"
-    echo "$os_info" | grep -iqsE "debian|ubuntu" && CLASH_CRON_TAB="/var/spool/cron/crontabs/$user"
+    # 用户级定时任务路径 - 使用用户crontab而不是系统crontab
+    MIHOMO_CRON_TAB="user"  # 标记使用用户级crontab
+    
+    # Legacy compatibility
+    CLASH_CRON_TAB="$MIHOMO_CRON_TAB"
 }
 _set_var
 
 # shellcheck disable=SC2120
 _set_bin() {
-    local bin_base_dir="${CLASH_BASE_DIR}/bin"
+    local bin_base_dir="${MIHOMO_BASE_DIR}/bin"
     [ -n "$1" ] && bin_base_dir=$1
     BIN_CLASH="${bin_base_dir}/clash"
     BIN_MIHOMO="${bin_base_dir}/mihomo"
@@ -92,14 +99,14 @@ _set_bin
 
 _set_rc() {
     [ "$1" = "unset" ] && {
-        sed -i "\|$CLASH_SCRIPT_DIR|d" "$SHELL_RC_BASH" "$SHELL_RC_ZSH" 2>/dev/null
+        sed -i "\|$MIHOMO_SCRIPT_DIR|d" "$SHELL_RC_BASH" "$SHELL_RC_ZSH" 2>/dev/null
         rm -f "$SHELL_RC_FISH" 2>/dev/null
         return
     }
 
-    echo "source $CLASH_SCRIPT_DIR/common.sh && source $CLASH_SCRIPT_DIR/clashctl.sh && watch_proxy" |
+    echo "source $MIHOMO_SCRIPT_DIR/common.sh && source $MIHOMO_SCRIPT_DIR/clashctl.sh && watch_proxy" |
         tee -a "$SHELL_RC_BASH" "$SHELL_RC_ZSH" >&/dev/null
-    [ -n "$SHELL_RC_FISH" ] && /usr/bin/install $SCRIPT_FISH "$SHELL_RC_FISH"
+    [ -n "$SHELL_RC_FISH" ] && install $SCRIPT_FISH "$SHELL_RC_FISH"
 }
 
 # 默认集成、安装mihomo内核
@@ -134,27 +141,27 @@ _get_random_port() {
 }
 
 function _get_proxy_port() {
-    local mixed_port=$(sudo "$BIN_YQ" '.mixed-port // ""' $CLASH_CONFIG_RUNTIME)
+    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
     MIXED_PORT=${mixed_port:-7890}
 
     _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME" && {
         local newPort=$(_get_random_port)
         local msg="端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
-        sudo "$BIN_YQ" -i ".mixed-port = $newPort" $CLASH_CONFIG_RUNTIME
+        "$BIN_YQ" -i ".mixed-port = $newPort" $MIHOMO_CONFIG_RUNTIME
         MIXED_PORT=$newPort
         _failcat '🎯' "$msg"
     }
 }
 
 function _get_ui_port() {
-    local ext_addr=$(sudo "$BIN_YQ" '.external-controller // ""' $CLASH_CONFIG_RUNTIME)
+    local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
     local ext_port=${ext_addr##*:}
     UI_PORT=${ext_port:-9090}
 
     _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME" && {
         local newPort=$(_get_random_port)
         local msg="端口占用：${UI_PORT} 🎲 随机分配：$newPort"
-        sudo "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $CLASH_CONFIG_RUNTIME
+        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" $MIHOMO_CONFIG_RUNTIME
         UI_PORT=$newPort
         _failcat '🎯' "$msg"
     }
@@ -191,9 +198,7 @@ function _failcat() {
 }
 
 function _quit() {
-    local user=root
-    [ -n "$SUDO_USER" ] && user=$SUDO_USER
-    exec sudo -u "$user" -- "$_SHELL" -i
+    exec "$_SHELL" -i
 }
 
 function _error_quit() {
@@ -209,7 +214,7 @@ function _error_quit() {
 
 _is_bind() {
     local port=$1
-    { sudo ss -lnptu || sudo netstat -lnptu; } | grep ":${port}\b"
+    { ss -lnptu || netstat -lnptu; } 2>/dev/null | grep ":${port}\b"
 }
 
 _is_already_in_use() {
@@ -218,14 +223,12 @@ _is_already_in_use() {
     _is_bind "$port" | grep -qs -v "$progress"
 }
 
-function _is_root() {
-    [ "$(whoami)" = "root" ]
-}
+# Removed _is_root function - not needed in userspace
 
 function _valid_env() {
-    _is_root || _error_quit "需要 root 或 sudo 权限执行"
+    # 用户空间运行，不需要root权限检查
     [ -n "$ZSH_VERSION" ] && [ -n "$BASH_VERSION" ] && _error_quit "仅支持：bash、zsh"
-    [ "$(ps -p 1 -o comm=)" != "systemd" ] && _error_quit "系统不具备 systemd"
+    # 用户空间不依赖systemd，移除相关检查
 }
 
 function _valid_config() {
@@ -283,7 +286,7 @@ _download_raw_config() {
     local dest=$1
     local url=$2
     local agent='clash-verge/v2.0.4'
-    sudo curl \
+    curl \
         --silent \
         --show-error \
         --insecure \
@@ -292,7 +295,7 @@ _download_raw_config() {
         --user-agent "$agent" \
         --output "$dest" \
         "$url" ||
-        sudo wget \
+        wget \
             --no-verbose \
             --no-check-certificate \
             --timeout 3 \
@@ -337,14 +340,14 @@ _start_convert() {
         local newPort=$(_get_random_port)
         _failcat '🎯' "端口占用：$BIN_SUBCONVERTER_PORT 🎲 随机分配：$newPort"
         [ ! -e "$BIN_SUBCONVERTER_CONFIG" ] && {
-            sudo /bin/cp -f "$BIN_SUBCONVERTER_DIR/pref.example.yml" "$BIN_SUBCONVERTER_CONFIG"
+            cp -f "$BIN_SUBCONVERTER_DIR/pref.example.yml" "$BIN_SUBCONVERTER_CONFIG"
         }
-        sudo "$BIN_YQ" -i ".server.port = $newPort" "$BIN_SUBCONVERTER_CONFIG"
+        "$BIN_YQ" -i ".server.port = $newPort" "$BIN_SUBCONVERTER_CONFIG"
         BIN_SUBCONVERTER_PORT=$newPort
     }
     local start=$(date +%s)
     # 子shell运行，屏蔽kill时的输出
-    (sudo "$BIN_SUBCONVERTER" 2>&1 | sudo tee "$BIN_SUBCONVERTER_LOG" >/dev/null &)
+    ("$BIN_SUBCONVERTER" 2>&1 | tee "$BIN_SUBCONVERTER_LOG" >/dev/null &)
     while ! _is_bind "$BIN_SUBCONVERTER_PORT" >&/dev/null; do
         sleep 1s
         local now=$(date +%s)
@@ -353,4 +356,94 @@ _start_convert() {
 }
 _stop_convert() {
     pkill -9 -f "$BIN_SUBCONVERTER" >&/dev/null
+}
+
+# User-space process management functions
+start_mihomo() {
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    
+    # Create necessary directories
+    mkdir -p "$(dirname "$pid_file")" "$(dirname "$log_file")"
+    
+    # Check if mihomo is already running
+    if is_mihomo_running; then
+        _okcat "mihomo 进程已在运行"
+        return 0
+    fi
+    
+    # Validate configuration before starting
+    _valid_config "$MIHOMO_CONFIG_RUNTIME" || {
+        _failcat "配置文件验证失败，无法启动 mihomo"
+        return 1
+    }
+    
+    # Start mihomo process in background using nohup
+    nohup "$BIN_KERNEL" -d "$MIHOMO_BASE_DIR" -f "$MIHOMO_CONFIG_RUNTIME" \
+        > "$log_file" 2>&1 &
+    
+    local pid=$!
+    echo "$pid" > "$pid_file"
+    
+    # Wait a moment and verify the process started successfully
+    sleep 1
+    if is_mihomo_running; then
+        _okcat "mihomo 进程启动成功 (PID: $pid)"
+        return 0
+    else
+        rm -f "$pid_file"
+        _failcat "mihomo 进程启动失败，请检查日志: $log_file"
+        return 1
+    fi
+}
+
+stop_mihomo() {
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    
+    if [ ! -f "$pid_file" ]; then
+        _okcat "mihomo 进程未运行"
+        return 0
+    fi
+    
+    local pid=$(cat "$pid_file" 2>/dev/null)
+    if [ -z "$pid" ]; then
+        rm -f "$pid_file"
+        _okcat "PID 文件为空，已清理"
+        return 0
+    fi
+    
+    # Try graceful shutdown first
+    if kill "$pid" 2>/dev/null; then
+        # Wait for graceful shutdown
+        local count=0
+        while kill -0 "$pid" 2>/dev/null && [ $count -lt 10 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        
+        # Force kill if still running
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -9 "$pid" 2>/dev/null
+            _okcat "强制终止 mihomo 进程 (PID: $pid)"
+        else
+            _okcat "mihomo 进程已优雅停止 (PID: $pid)"
+        fi
+    else
+        _okcat "mihomo 进程已停止"
+    fi
+    
+    rm -f "$pid_file"
+    return 0
+}
+
+is_mihomo_running() {
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    
+    [ ! -f "$pid_file" ] && return 1
+    
+    local pid=$(cat "$pid_file" 2>/dev/null)
+    [ -z "$pid" ] && return 1
+    
+    # Check if process is actually running
+    kill -0 "$pid" 2>/dev/null
 }
