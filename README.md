@@ -290,3 +290,7 @@ A: 检查防火墙设置，确保控制台端口（默认 9090）可以访问。
 1. 编写本项目主要目的为学习和研究 Shell 编程，不得将本项目中任何内容用于违反国家/地区/组织等的法律法规或相关规定的其他用途。
 2. 本项目保留随时对免责声明进行补充或更改的权利，直接或间接使用本项目内容的个人或组织，视为接受本项目的特别声明。
 3. 使用本项目所产生的任何后果由使用者自行承担。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SaladDay/clash-for-lab&type=Date)](https://www.star-history.com/#SaladDay/clash-for-lab&Date)
