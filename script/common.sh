@@ -146,20 +146,39 @@ _get_random_port() {
 }
 
 function _get_proxy_port() {
-    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' $MIHOMO_CONFIG_RUNTIME)
-    MIXED_PORT=${mixed_port:-17890}
+    # Ensure config file exists before reading
+    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+        local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+        MIXED_PORT=${mixed_port:-7890}
+    else
+        MIXED_PORT=7890
+    fi
 }
 
 function _get_ui_port() {
-    local ext_addr=$("$BIN_YQ" '.external-controller // ""' $MIHOMO_CONFIG_RUNTIME)
-    local ext_port=${ext_addr##*:}
-    UI_PORT=${ext_port:-19090}
+    # Ensure config file exists before reading
+    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+        local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+        local ext_port=${ext_addr##*:}
+        UI_PORT=${ext_port:-9090}
+    else
+        UI_PORT=9090
+    fi
 }
 
 function _get_dns_port() {
-    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' $MIHOMO_CONFIG_RUNTIME)
-    local dns_port=${dns_listen##*:}
-    DNS_PORT=${dns_port:-15353}
+    # Ensure config file exists before reading
+    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+        local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+        if [ -n "$dns_listen" ]; then
+            local dns_port=${dns_listen##*:}
+            DNS_PORT=${dns_port:-15353}
+        else
+            DNS_PORT=15353
+        fi
+    else
+        DNS_PORT=15353
+    fi
 }
 
 _get_color() {
@@ -448,8 +467,9 @@ _resolve_port_conflicts() {
     local show_message=${2:-true} 
     local port_changed=false
     
-    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$config_file")
-    MIXED_PORT=${mixed_port:-17890}
+    # Check mixed-port (proxy port)
+    local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$config_file" 2>/dev/null)
+    MIXED_PORT=${mixed_port:-7890}
     if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
         [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
@@ -458,24 +478,44 @@ _resolve_port_conflicts() {
         port_changed=true
     fi
     
-    local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$config_file")
-    local ext_port=${ext_addr##*:}
-    UI_PORT=${ext_port:-19090}
+    # Check external-controller (UI port)
+    local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$config_file" 2>/dev/null)
+    if [ -n "$ext_addr" ]; then
+        local ext_port=${ext_addr##*:}
+        UI_PORT=${ext_port:-9090}
+        # Preserve the original bind address format
+        local bind_addr=${ext_addr%:*}
+        [ "$bind_addr" = "$ext_addr" ] && bind_addr="127.0.0.1"  # fallback if no colon found
+    else
+        UI_PORT=9090
+        bind_addr="127.0.0.1"
+    fi
+    
     if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
         [ "$show_message" = true ] && _failcat '🎯' "UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".external-controller = \"0.0.0.0:$newPort\"" "$config_file"
+        "$BIN_YQ" -i ".external-controller = \"${bind_addr}:$newPort\"" "$config_file"
         UI_PORT=$newPort
         port_changed=true
     fi
     
-    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$config_file")
-    local dns_port=${dns_listen##*:}
-    DNS_PORT=${dns_port:-15353}
+    # Check DNS listen port
+    local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$config_file" 2>/dev/null)
+    if [ -n "$dns_listen" ]; then
+        local dns_port=${dns_listen##*:}
+        DNS_PORT=${dns_port:-15353}
+        # Preserve the original bind address format
+        local dns_bind_addr=${dns_listen%:*}
+        [ "$dns_bind_addr" = "$dns_listen" ] && dns_bind_addr="0.0.0.0"  # fallback if no colon found
+    else
+        DNS_PORT=15353
+        dns_bind_addr="0.0.0.0"
+    fi
+    
     if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
         local newPort=$(_get_random_port)
         [ "$show_message" = true ] && _failcat '🎯' "DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".dns.listen = \"0.0.0.0:$newPort\"" "$config_file"
+        "$BIN_YQ" -i ".dns.listen = \"${dns_bind_addr}:$newPort\"" "$config_file"
         DNS_PORT=$newPort
         port_changed=true
     fi

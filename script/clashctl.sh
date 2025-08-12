@@ -70,6 +70,10 @@ function clashon() {
         # 验证实际端口是否与配置一致，只在不一致时提示
         _verify_actual_ports
         
+        # 确保端口变量已正确设置
+        _get_proxy_port
+        _get_ui_port
+        _get_dns_port
         _set_system_proxy
         _okcat '已开启代理环境'
     else
@@ -82,6 +86,11 @@ function clashon() {
 _verify_actual_ports() {
     local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
     [ ! -f "$log_file" ] && return 0
+    
+    # Ensure we have current port values from config
+    _get_proxy_port
+    _get_ui_port
+    _get_dns_port
     
     # Extract actual listening ports from log
     local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
@@ -120,8 +129,13 @@ watch_proxy() {
     [ -z "$http_proxy" ] && [[ $- == *i* ]] && {
         # 检查 mihomo 进程是否运行，如果运行则设置代理环境变量
         if is_mihomo_running; then
-            _get_proxy_port
-            _set_system_proxy
+            # 确保配置文件存在再读取端口
+            if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+                _get_proxy_port
+                _get_ui_port
+                _get_dns_port
+                _set_system_proxy
+            fi
         fi
     }
 }
@@ -202,12 +216,16 @@ function clashstatus() {
         _okcat "日志文件: $log_file"
         
         # Show proxy port status
-        _get_proxy_port
-        _get_ui_port
-        _get_dns_port
-        _okcat "代理端口: $MIXED_PORT"
-        _okcat "管理端口: $UI_PORT"
-        _okcat "DNS端口: $DNS_PORT"
+        if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+            _get_proxy_port
+            _get_ui_port
+            _get_dns_port
+            _okcat "代理端口: $MIXED_PORT"
+            _okcat "管理端口: $UI_PORT"
+            _okcat "DNS端口: $DNS_PORT"
+        else
+            _failcat "配置文件不存在，无法获取端口信息"
+        fi
         
         # Show system proxy status
         clashproxy status
