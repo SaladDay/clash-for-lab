@@ -43,9 +43,10 @@ Clash for Lab 完美解决了这些问题。
 #### 1. 克隆项目
 
 ```bash
-git clone https://github.com/saladday/clash-for-lab.git
+git clone https://ghfast.top/https://github.com/saladday/clash-for-lab.git
 cd clash-for-lab
 ```
+- 上述克隆命令使用了加速链接。如果无法访问，请尝试其他[可用链接](https://ghproxy.link/)，或直接下载压缩包进行安装。
 
 #### 2. 运行安装脚本
 
@@ -189,7 +190,7 @@ clash subscribe
 clash update
 
 # 设置自动更新（每2天）
-clashu pdate auto
+clash update auto
 
 # TODO:自定义更新天数
 ```
