@@ -67,13 +67,11 @@ function clashon() {
         # Wait for mihomo to fully start
         sleep 2
         
-        # 验证实际端口是否与配置一致，只在不一致时提示
+        # 验证实际端口并设置端口变量
         _verify_actual_ports
         
-        # 确保端口变量已正确设置，并在端口更新后重新设置系统代理
-        _get_proxy_port
-        _get_ui_port
-        _get_dns_port
+        # 保存端口状态并设置系统代理
+        _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
         _set_system_proxy
         _okcat '已开启代理环境'
     else
@@ -87,11 +85,6 @@ _verify_actual_ports() {
     local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
     [ ! -f "$log_file" ] && return 0
     
-    # Ensure we have current port values from config
-    _get_proxy_port
-    _get_ui_port
-    _get_dns_port
-    
     # Extract actual listening ports from log
     # Try both old format (Mixed) and new format (HTTP proxy)
     local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
@@ -100,30 +93,51 @@ _verify_actual_ports() {
     local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
     
+    # 从配置文件获取期望端口进行比较
+    local config_proxy_port=$("$BIN_YQ" '.mixed-port // 7890' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    local config_ui_addr=$("$BIN_YQ" '.external-controller // "127.0.0.1:9090"' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    local config_ui_port=${config_ui_addr##*:}
+    local config_dns_addr=$("$BIN_YQ" '.dns.listen // "0.0.0.0:15353"' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    local config_dns_port=${config_dns_addr##*:}
+    
     local port_changed=false
     
-    # 只有当实际端口与配置端口不一致时才显示提示和更新变量
-    if [ -n "$actual_proxy_port" ] && [ "$actual_proxy_port" != "$MIXED_PORT" ]; then
-        _failcat "🔄" "mihomo自动调整代理端口: $MIXED_PORT → $actual_proxy_port"
+    # 设置实际监听端口到变量
+    if [ -n "$actual_proxy_port" ]; then
         MIXED_PORT=$actual_proxy_port
-        port_changed=true
+        [ "$actual_proxy_port" != "$config_proxy_port" ] && {
+            _failcat "🔄" "mihomo自动调整代理端口: $config_proxy_port → $actual_proxy_port"
+            port_changed=true
+        }
+    else
+        MIXED_PORT=$config_proxy_port
     fi
     
-    if [ -n "$actual_ui_port" ] && [ "$actual_ui_port" != "$UI_PORT" ]; then
-        _failcat "🔄" "mihomo自动调整UI端口: $UI_PORT → $actual_ui_port"
+    if [ -n "$actual_ui_port" ]; then
         UI_PORT=$actual_ui_port
-        port_changed=true
+        [ "$actual_ui_port" != "$config_ui_port" ] && {
+            _failcat "🔄" "mihomo自动调整UI端口: $config_ui_port → $actual_ui_port"
+            port_changed=true
+        }
+    else
+        UI_PORT=$config_ui_port
     fi
     
-    if [ -n "$actual_dns_port" ] && [ "$actual_dns_port" != "$DNS_PORT" ]; then
-        _failcat "🔄" "mihomo自动调整DNS端口: $DNS_PORT → $actual_dns_port"
+    if [ -n "$actual_dns_port" ]; then
         DNS_PORT=$actual_dns_port
-        port_changed=true
+        [ "$actual_dns_port" != "$config_dns_port" ] && {
+            _failcat "🔄" "mihomo自动调整DNS端口: $config_dns_port → $actual_dns_port"
+            port_changed=true
+        }
+    else
+        DNS_PORT=$config_dns_port
     fi
     
     # 只有当端口有变化时才显示最终端口分配并重新设置系统代理
     if [ "$port_changed" = true ]; then
         _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+        # 保存实际监听端口到状态文件
+        _save_port_state "$MIXED_PORT" "$UI_PORT" "$DNS_PORT"
         # 端口变化时重新设置系统代理环境变量
         _set_system_proxy
     fi
@@ -134,13 +148,10 @@ watch_proxy() {
     [ -z "$http_proxy" ] && [[ $- == *i* ]] && {
         # 检查 mihomo 进程是否运行，如果运行则设置代理环境变量
         if is_mihomo_running; then
-            # 确保配置文件存在再读取端口
-            if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
-                _get_proxy_port
-                _get_ui_port
-                _get_dns_port
-                _set_system_proxy
-            fi
+            _get_proxy_port
+            _get_ui_port
+            _get_dns_port
+            _set_system_proxy
         fi
     }
 }

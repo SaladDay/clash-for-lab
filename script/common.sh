@@ -145,40 +145,47 @@ _get_random_port() {
     _get_random_port
 }
 
+# 端口状态文件路径
+MIHOMO_PORT_STATE="${MIHOMO_BASE_DIR}/config/ports.conf"
+
+# 保存实际监听端口到状态文件
+_save_port_state() {
+    local proxy_port=$1
+    local ui_port=$2  
+    local dns_port=$3
+    
+    mkdir -p "$(dirname "$MIHOMO_PORT_STATE")"
+    cat > "$MIHOMO_PORT_STATE" << EOF
+PROXY_PORT=$proxy_port
+UI_PORT=$ui_port
+DNS_PORT=$dns_port
+TIMESTAMP=$(date +%s)
+EOF
+}
+
+# 从状态文件读取实际监听端口
 function _get_proxy_port() {
-    # Ensure config file exists before reading
-    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
-        local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
-        MIXED_PORT=${mixed_port:-7890}
-    else
-        MIXED_PORT=7890
+    if [ -f "$MIHOMO_PORT_STATE" ]; then
+        MIXED_PORT=$(grep "^PROXY_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
+    # 如果状态文件不存在或读取失败，使用默认值
+    MIXED_PORT=${MIXED_PORT:-7890}
 }
 
 function _get_ui_port() {
-    # Ensure config file exists before reading
-    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
-        local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
-        local ext_port=${ext_addr##*:}
-        UI_PORT=${ext_port:-9090}
-    else
-        UI_PORT=9090
+    if [ -f "$MIHOMO_PORT_STATE" ]; then
+        UI_PORT=$(grep "^UI_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
+    # 如果状态文件不存在或读取失败，使用默认值
+    UI_PORT=${UI_PORT:-9090}
 }
 
 function _get_dns_port() {
-    # Ensure config file exists before reading
-    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
-        local dns_listen=$("$BIN_YQ" '.dns.listen // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
-        if [ -n "$dns_listen" ]; then
-            local dns_port=${dns_listen##*:}
-            DNS_PORT=${dns_port:-15353}
-        else
-            DNS_PORT=15353
-        fi
-    else
-        DNS_PORT=15353
+    if [ -f "$MIHOMO_PORT_STATE" ]; then
+        DNS_PORT=$(grep "^DNS_PORT=" "$MIHOMO_PORT_STATE" 2>/dev/null | cut -d'=' -f2)
     fi
+    # 如果状态文件不存在或读取失败，使用默认值
+    DNS_PORT=${DNS_PORT:-15353}
 }
 
 _get_color() {
@@ -449,6 +456,8 @@ stop_mihomo() {
     fi
     
     rm -f "$pid_file"
+    # 清理端口状态文件
+    rm -f "$MIHOMO_PORT_STATE"
     return 0
 }
 
