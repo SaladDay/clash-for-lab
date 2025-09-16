@@ -70,7 +70,7 @@ function clashon() {
         # 验证实际端口是否与配置一致，只在不一致时提示
         _verify_actual_ports
         
-        # 确保端口变量已正确设置
+        # 确保端口变量已正确设置，并在端口更新后重新设置系统代理
         _get_proxy_port
         _get_ui_port
         _get_dns_port
@@ -121,9 +121,11 @@ _verify_actual_ports() {
         port_changed=true
     fi
     
-    # 只有当端口有变化时才显示最终端口分配
+    # 只有当端口有变化时才显示最终端口分配并重新设置系统代理
     if [ "$port_changed" = true ]; then
         _okcat "最终端口分配 - 代理:$MIXED_PORT UI:$UI_PORT DNS:$DNS_PORT"
+        # 端口变化时重新设置系统代理环境变量
+        _set_system_proxy
     fi
 }
 
