@@ -306,6 +306,7 @@ _download_raw_config() {
         --insecure \
         --connect-timeout 4 \
         --retry 1 \
+        --noproxy "*" \
         --user-agent "$agent" \
         --output "$dest" \
         "$url" ||
@@ -314,6 +315,7 @@ _download_raw_config() {
             --no-check-certificate \
             --timeout 3 \
             --tries 1 \
+            --no-proxy \
             --user-agent "$agent" \
             --output-document "$dest" \
             "$url"
