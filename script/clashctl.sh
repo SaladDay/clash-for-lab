@@ -97,7 +97,7 @@ _verify_actual_ports() {
     local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     [ -z "$actual_proxy_port" ] && actual_proxy_port=$(grep "HTTP proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     
-    local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
+    local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
     
     local port_changed=false
@@ -415,7 +415,17 @@ function clashsubscribe() {
         read -r response
         case "$response" in
         [yY]|[yY][eE][sS])
-            clashupdate "$new_url"
+            # Ask if user wants to use proxy for update
+            printf "是否通过代理进行更新? [y/N]: "
+            read -r proxy_response
+            case "$proxy_response" in
+            [yY]|[yY][eE][sS])
+                clashupdate "$new_url" "proxy"
+                ;;
+            *)
+                clashupdate "$new_url"
+                ;;
+            esac
             ;;
         *)
             _okcat "订阅地址已保存，使用 'clash update' 命令更新配置"
@@ -435,6 +445,7 @@ EOF
 function clashupdate() {
     local url=$(cat "$MIHOMO_CONFIG_URL" 2>/dev/null)
     local is_auto
+    local use_proxy=false
 
     case "$1" in
     auto)
@@ -447,6 +458,7 @@ function clashupdate() {
         ;;
     *)
         [ -n "$1" ] && url=$1
+        [ "$2" = "proxy" ] && use_proxy=true
         ;;
     esac
 
