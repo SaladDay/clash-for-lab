@@ -145,15 +145,49 @@ _get_random_port() {
     _get_random_port
 }
 
-# 端口状态文件路径
+# 端口状态与偏好文件路径
 MIHOMO_PORT_STATE="${MIHOMO_BASE_DIR}/config/ports.conf"
+MIHOMO_PORT_PREF="${MIHOMO_BASE_DIR}/config/port.pref"
+
+# 读取代理端口偏好设置
+_load_port_preferences() {
+    PORT_PREF_MODE=auto
+    PORT_PREF_VALUE=""
+
+    [ -f "$MIHOMO_PORT_PREF" ] || return 0
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+        PROXY_MODE)
+            [ -n "$value" ] && PORT_PREF_MODE=$value
+            ;;
+        PROXY_PORT)
+            PORT_PREF_VALUE=$value
+            ;;
+        esac
+    done < "$MIHOMO_PORT_PREF"
+
+    [ "$PORT_PREF_MODE" = "manual" ] || PORT_PREF_MODE=auto
+}
+
+# 保存代理端口偏好
+_save_port_preferences() {
+    local mode=$1
+    local value=$2
+
+    mkdir -p "$(dirname "$MIHOMO_PORT_PREF")"
+    cat > "$MIHOMO_PORT_PREF" <<EOF
+PROXY_MODE=$mode
+PROXY_PORT=$value
+EOF
+}
 
 # 保存实际监听端口到状态文件
 _save_port_state() {
     local proxy_port=$1
-    local ui_port=$2  
+    local ui_port=$2
     local dns_port=$3
-    
+
     mkdir -p "$(dirname "$MIHOMO_PORT_STATE")"
     cat > "$MIHOMO_PORT_STATE" << EOF
 PROXY_PORT=$proxy_port
@@ -475,20 +509,88 @@ is_mihomo_running() {
 
 _resolve_port_conflicts() {
     local config_file=$1
-    local show_message=${2:-true} 
+    local show_message=${2:-true}
     local port_changed=false
-    
+
+    _load_port_preferences
+
     # Check mixed-port (proxy port)
     local mixed_port=$("$BIN_YQ" '.mixed-port // ""' "$config_file" 2>/dev/null)
-    MIXED_PORT=${mixed_port:-7890}
-    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
-        local newPort=$(_get_random_port)
-        [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
-        "$BIN_YQ" -i ".mixed-port = $newPort" "$config_file"
-        MIXED_PORT=$newPort
-        port_changed=true
+    if [ "$PORT_PREF_MODE" = "manual" ]; then
+        if ! [[ $PORT_PREF_VALUE =~ ^[0-9]+$ ]]; then
+            PORT_PREF_VALUE=7890
+        fi
+        MIXED_PORT=$PORT_PREF_VALUE
+        "$BIN_YQ" -i ".mixed-port = $MIXED_PORT" "$config_file"
+    else
+        MIXED_PORT=${mixed_port:-7890}
     fi
-    
+
+    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
+        local require_auto=false
+
+        if [ "$PORT_PREF_MODE" = "manual" ]; then
+            local interactive=false
+            [ -t 0 ] && interactive=true
+
+            if [ "$interactive" = true ]; then
+                while true; do
+                    [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
+                    printf "端口 %s 已被占用，选择操作 [r]重新输入/[a]自动分配: " "$MIXED_PORT"
+                    read -r choice
+                    case "$choice" in
+                    [rR])
+                        printf "请输入新的代理端口 [1024-65535]: "
+                        read -r manual_port
+                        if ! [[ $manual_port =~ ^[0-9]+$ ]] || [ "$manual_port" -lt 1024 ] || [ "$manual_port" -gt 65535 ]; then
+                            _failcat '❌' "请输入有效的端口号"
+                            continue
+                        fi
+                        if _is_already_in_use "$manual_port" "$BIN_KERNEL_NAME"; then
+                            MIXED_PORT=$manual_port
+                            continue
+                        fi
+                        "$BIN_YQ" -i ".mixed-port = $manual_port" "$config_file"
+                        MIXED_PORT=$manual_port
+                        PORT_PREF_VALUE=$manual_port
+                        _save_port_preferences manual "$manual_port"
+                        port_changed=true
+                        break
+                        ;;
+                    [aA])
+                        _save_port_preferences auto ""
+                        PORT_PREF_VALUE=""
+                        PORT_PREF_MODE=auto
+                        require_auto=true
+                        break
+                        ;;
+                    *)
+                        _failcat '❌' "无效的选项，请重新选择"
+                        ;;
+                    esac
+                done
+            else
+                [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
+                _okcat '⚙️' "检测到非交互环境，已切换为自动分配端口"
+                _save_port_preferences auto ""
+                PORT_PREF_VALUE=""
+                PORT_PREF_MODE=auto
+                require_auto=true
+            fi
+        else
+            require_auto=true
+            [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT}"
+        fi
+
+        if [ "$require_auto" = true ]; then
+            local newPort=$(_get_random_port)
+            [ "$show_message" = true ] && _failcat '🎯' "代理端口占用：${MIXED_PORT} 🎲 随机分配：$newPort"
+            "$BIN_YQ" -i ".mixed-port = $newPort" "$config_file"
+            MIXED_PORT=$newPort
+            port_changed=true
+        fi
+    fi
+
     # Check external-controller (UI port)
     local ext_addr=$("$BIN_YQ" '.external-controller // ""' "$config_file" 2>/dev/null)
     if [ -n "$ext_addr" ]; then

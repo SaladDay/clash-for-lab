@@ -108,6 +108,8 @@ Commands:
     off                     关闭代理
     restart                 重启代理服务
     proxy    [on|off]       系统代理环境变量
+    port     [status|auto|set]
+                            代理端口模式设置
     ui                      Web 控制台地址
     status                  进程运行状态
     tun      [on|off]       Tun 模式 (需要权限)
@@ -157,7 +159,20 @@ clash off
 
 ### 3.高级功能
 
-#### 3.1 Web 控制台管理
+#### 3.1 固定代理端口
+
+```bash
+# 查看当前端口模式和端口
+clash port status
+
+# 固定代理端口（如 7890），如遇冲突可按提示重新输入或切换自动
+clash port set 7890
+
+# 切换回自动分配端口
+clash port auto
+```
+
+#### 3.2 Web 控制台管理
 
 ```bash
 # 查看控制台地址
@@ -177,7 +192,7 @@ clash secret
 - 监控流量统计
 - 测试节点延迟
 
-#### 3.2 订阅管理
+#### 3.3 订阅管理
 
 ```bash
 # 设置订阅地址
@@ -195,7 +210,7 @@ clash update auto
 # TODO:自定义更新天数
 ```
 
-#### 3.3 高级配置
+#### 3.4 高级配置
 
 ```bash
 # 编辑自定义配置（Mixin）

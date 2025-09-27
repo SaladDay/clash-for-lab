@@ -216,6 +216,99 @@ EOF
     esac
 }
 
+function clashport() {
+    local action=$1
+    shift || true
+
+    case "$action" in
+    ""|status)
+        _load_port_preferences
+        _get_proxy_port
+        local mode_msg
+        if [ "$PORT_PREF_MODE" = "manual" ] && [ -n "$PORT_PREF_VALUE" ]; then
+            mode_msg="固定(${PORT_PREF_VALUE})"
+        else
+            mode_msg="自动"
+        fi
+        _okcat "端口模式：$mode_msg"
+        _okcat "当前代理端口：$MIXED_PORT"
+        ;;
+    auto)
+        _save_port_preferences auto ""
+        _okcat "已切换为自动分配代理端口"
+        if is_mihomo_running; then
+            _okcat "正在重新应用配置..."
+            clashrestart
+        fi
+        ;;
+    set|manual)
+        local manual_port=$1
+        local prefer_auto=false
+
+        while true; do
+            if [ -z "$manual_port" ]; then
+                printf "请输入想要固定的代理端口 [1024-65535]: "
+                read -r manual_port
+            fi
+
+            if [ -z "$manual_port" ]; then
+                _failcat "未输入端口"
+                continue
+            fi
+
+            if ! [[ $manual_port =~ ^[0-9]+$ ]] || [ "$manual_port" -lt 1024 ] || [ "$manual_port" -gt 65535 ]; then
+                _failcat "端口号无效，请输入 1024-65535 之间的数字"
+                manual_port=""
+                continue
+            fi
+
+            if _is_already_in_use "$manual_port" "$BIN_KERNEL_NAME"; then
+                _failcat '🎯' "端口 $manual_port 已被占用"
+                printf "选择操作 [r]重新输入/[a]自动分配: "
+                read -r choice
+                case "$choice" in
+                [aA])
+                    prefer_auto=true
+                    break
+                    ;;
+                [rR])
+                    manual_port=""
+                    continue
+                    ;;
+                *)
+                    manual_port=""
+                    continue
+                    ;;
+                esac
+            fi
+
+            break
+        done
+
+        if [ "$prefer_auto" = true ]; then
+            _save_port_preferences auto ""
+            _okcat "已切换为自动分配代理端口"
+        else
+            _save_port_preferences manual "$manual_port"
+            _okcat "已固定代理端口：$manual_port"
+        fi
+
+        if is_mihomo_running; then
+            _okcat "正在重新应用配置..."
+            clashrestart
+        fi
+        ;;
+    *)
+        cat <<EOF
+用法: clashport [status|auto|set <port>]
+    status          查看当前代理端口模式与端口
+    auto            切换为自动分配代理端口
+    set <port>      固定代理端口，端口冲突时可选择重新输入或自动分配
+EOF
+        ;;
+    esac
+}
+
 function clashstatus() {
     local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
     local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
@@ -548,6 +641,10 @@ function clashctl() {
         shift
         clashproxy "$@"
         ;;
+    port)
+        shift
+        clashport "$@"
+        ;;
     tun)
         shift
         clashtun "$@"
@@ -581,6 +678,7 @@ Commands:
     off                     关闭代理
     restart                 重启代理服务
     proxy    [on|off]       系统代理环境变量
+    port     [status|auto|set]  代理端口模式设置
     ui                      Web 控制台地址
     status                  进程运行状态
     tun      [on|off]       Tun 模式 (需要权限)
