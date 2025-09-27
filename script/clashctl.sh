@@ -146,8 +146,11 @@ _verify_actual_ports() {
 watch_proxy() {
     # 新开交互式shell，且无代理变量时
     [ -z "$http_proxy" ] && [[ $- == *i* ]] && {
-        # 检查 mihomo 进程是否运行，如果运行则设置代理环境变量
-        if is_mihomo_running; then
+        # 检查用户是否启用系统代理
+        local system_proxy_status=$("$BIN_YQ" '.system-proxy.enable // true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null)
+
+        # 仅当用户启用系统代理且 mihomo 进程运行时，自动写入环境变量
+        if [ "$system_proxy_status" = "true" ] && is_mihomo_running; then
             _get_proxy_port
             _get_ui_port
             _get_dns_port
@@ -172,6 +175,9 @@ function clashproxy() {
     case "$1" in
     on)
         if is_mihomo_running; then
+            _get_proxy_port
+            _get_ui_port
+            _get_dns_port
             _set_system_proxy
             _okcat '已开启系统代理'
         else
