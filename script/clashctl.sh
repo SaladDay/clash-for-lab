@@ -59,8 +59,8 @@ function clashon() {
     "$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
         "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
     
-    # 只在启动前进行一次端口冲突检测，静默模式避免重复消息
-    _resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME" false
+    # 检查端口冲突并显示分配结果
+    _resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME" true
     
     # Start mihomo process
     if start_mihomo; then

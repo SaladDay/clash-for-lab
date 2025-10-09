@@ -49,14 +49,10 @@ _set_rc
 
 _set_bin
 
-mkdir -p "$(dirname "$MIHOMO_CONFIG_RUNTIME")"
-"$BIN_YQ" eval-all '. as $item ireduce ({}; . *+ $item) | (.. | select(tag == "!!seq")) |= unique' \
-    "$MIHOMO_CONFIG_MIXIN" "$MIHOMO_CONFIG_RAW" "$MIHOMO_CONFIG_MIXIN" > "$MIHOMO_CONFIG_RUNTIME"
+# 启动代理服务（会自动合并配置和检查端口冲突）
+mihomoctl on
 
-_okcat '🔧' '检查端口冲突...'
-_resolve_port_conflicts "$MIHOMO_CONFIG_RUNTIME"
-
-# 显示 Web UI 信息
+# 显示 Web UI 信息（启动后显示实际端口）
 clashui
 
 _okcat '🎉' 'mihomo 用户空间代理已安装完成！'
@@ -73,8 +69,5 @@ _okcat ''
 _okcat '🏠' "安装目录: $MIHOMO_BASE_DIR"
 _okcat '📁' "配置目录: $MIHOMO_BASE_DIR/config/"
 _okcat '📋' "日志目录: $MIHOMO_BASE_DIR/logs/"
-
-# 启动代理服务
-mihomoctl on
 
 _quit
