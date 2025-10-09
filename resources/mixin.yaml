@@ -3,7 +3,7 @@ system-proxy:
   enable: true
 
 # Web 控制台配置
-external-controller: "127.0.0.1:9090"  # Keep consistent with base config
+external-controller: "0.0.0.0:9090"  
 external-ui: public
 secret:
 
