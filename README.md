@@ -22,7 +22,8 @@ Clash for Lab 完美解决了这些问题。
 ### 核心特性
 
 - **用户空间运行**：无需 `sudo` 权限，安装到用户目录 `~/tools/mihomo/`
-- **端口管理**：自动检测端口冲突并分配可用端口
+- **智能端口管理**：自动检测端口冲突并分配可用端口，支持固定端口模式
+- **局域网访问控制**：支持开启/关闭局域网访问，方便多设备共享代理
 - **命令行操作**：完全基于命令行，适合无 GUI 环境
 - **多架构支持**：适配主流 Linux 发行版（CentOS、Debian、Ubuntu 等）
 - **进程管理**：基于 PID 文件管理，无需 systemd 服务
@@ -107,12 +108,12 @@ Commands:
     on                      开启代理
     off                     关闭代理
     restart                 重启代理服务
-    proxy    [on|off]       系统代理环境变量
-    port     [status|auto|set]
-                            代理端口模式设置
+    proxy    [on|off|status]       系统代理环境变量
+    port     [status|auto|set]     代理端口模式设置
     ui                      Web 控制台地址
     status                  进程运行状态
-    tun      [on|off]       Tun 模式 (需要权限)
+    tun      [on|off|status]       Tun 模式 (需要权限)
+    lan      [on|off|status]       局域网访问控制
     mixin    [-e|-r]        Mixin 配置文件
     secret   [SECRET]       Web 控制台密钥
     subscribe [URL]         设置或查看订阅地址
@@ -157,7 +158,7 @@ clash status
 clash off
 ```
 
-### 3.高级功能
+### 3. 高级功能
 
 #### 3.1 固定代理端口
 
@@ -172,7 +173,26 @@ clash port set 7890
 clash port auto
 ```
 
-#### 3.2 Web 控制台管理
+#### 3.2 局域网访问控制
+
+```bash
+# 查看局域网访问状态
+clash lan status
+
+# 开启局域网访问（允许其他设备通过本机 IP 使用代理）
+clash lan on
+
+# 关闭局域网访问（仅本机可用）
+clash lan off
+```
+
+开启局域网访问后，其他设备可以通过以下方式使用代理：
+- HTTP 代理：`http://your-server-ip:port`
+- SOCKS5 代理：`socks5://your-server-ip:port`
+
+> 注意：开启局域网访问前，请确保网络环境安全，避免代理被未授权使用。
+
+#### 3.3 Web 控制台管理
 
 ```bash
 # 查看控制台地址
@@ -192,7 +212,7 @@ clash secret
 - 监控流量统计
 - 测试节点延迟
 
-#### 3.3 订阅管理
+#### 3.4 订阅管理
 
 ```bash
 # 设置订阅地址
@@ -210,7 +230,7 @@ clash update auto
 # TODO:自定义更新天数
 ```
 
-#### 3.4 高级配置
+#### 3.5 高级配置
 
 ```bash
 # 编辑自定义配置（Mixin）
@@ -222,6 +242,17 @@ clash mixin -r
 # 启用 TUN 模式（暂时还不好用,建议别用）
 clash tun on
 ```
+
+**Mixin 配置说明**：
+
+Mixin 配置文件（`~/tools/mihomo/config/mixin.yaml`）用于自定义代理行为，支持以下配置：
+
+- `mode`：代理模式（rule/global/direct），默认为 rule 模式
+- `allow-lan`：局域网访问控制
+- `external-controller`：Web 控制台监听地址
+- 其他高级配置项
+
+通过 Web UI 修改的配置（如代理模式）会在下次启动时保留。
 
 ## 项目结构
 
@@ -279,6 +310,14 @@ A: 使用 `clash subscribe new-url` 命令更换，系统会自动更新配置�
 ### Q: Web 控制台无法访问怎么办？
 
 A: 检查防火墙设置，确保控制台端口（默认 9090）可以访问。如果是远程访问，需要配置端口转发。
+
+### Q: 如何让局域网内其他设备使用代理？
+
+A: 使用 `clash lan on` 开启局域网访问，然后在其他设备上配置代理服务器为本机 IP 和代理端口。可以通过 `clash status` 查看当前代理端口。
+
+### Q: 代理模式在重启后会恢复默认吗？
+
+A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动保存到 mixin 配置中，重启后会保留您的设置。
 
 ## 致谢
 
