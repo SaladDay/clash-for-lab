@@ -2,6 +2,10 @@
 system-proxy:
   enable: true
 
+# 代理模式配置 (rule/global/direct)
+# 用户可以通过 Web UI 修改此配置，修改后会在下次启动时保留
+mode: rule
+
 # Web 控制台配置
 external-controller: "0.0.0.0:9090"  
 external-ui: public
