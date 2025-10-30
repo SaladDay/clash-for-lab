@@ -497,6 +497,63 @@ function clashtun() {
     esac
 }
 
+_lanstatus() {
+    if [ -f "$MIHOMO_CONFIG_RUNTIME" ]; then
+        local lan_status=$("$BIN_YQ" '.allow-lan // false' "${MIHOMO_CONFIG_RUNTIME}" 2>/dev/null)
+        if [ "$lan_status" = 'true' ]; then
+            _okcat '局域网访问：已开启'
+        else
+            _failcat '局域网访问：已关闭'
+        fi
+    else
+        _failcat '局域网访问：配置文件不存在'
+        return 1
+    fi
+}
+
+_lanoff() {
+    _lanstatus >/dev/null 2>&1 && {
+        local current_status=$("$BIN_YQ" '.allow-lan // false' "${MIHOMO_CONFIG_RUNTIME}" 2>/dev/null)
+        [ "$current_status" = 'false' ] && return 0
+    }
+
+    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
+    "$BIN_YQ" -i '.allow-lan = false' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
+        _failcat "无法更新局域网访问配置"
+        return 1
+    }
+    _merge_config_restart && _okcat "局域网访问已关闭"
+}
+
+_lanon() {
+    local current_status=$("$BIN_YQ" '.allow-lan // false' "${MIHOMO_CONFIG_RUNTIME}" 2>/dev/null)
+    [ "$current_status" = 'true' ] && return 0
+
+    mkdir -p "$(dirname "$MIHOMO_CONFIG_MIXIN")"
+    "$BIN_YQ" -i '.allow-lan = true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null || {
+        _failcat "无法更新局域网访问配置"
+        return 1
+    }
+    _merge_config_restart && _okcat "局域网访问已开启"
+}
+
+function clashlan() {
+    case "$1" in
+    on)
+        _lanon
+        ;;
+    off)
+        _lanoff
+        ;;
+    status)
+        _lanstatus
+        ;;
+    *)
+        _lanstatus
+        ;;
+    esac
+}
+
 function clashsubscribe() {
     case "$#" in
     0)
@@ -649,6 +706,10 @@ function clashctl() {
         shift
         clashtun "$@"
         ;;
+    lan)
+        shift
+        clashlan "$@"
+        ;;
     mixin)
         shift
         clashmixin "$@"
@@ -677,11 +738,12 @@ Commands:
     on                      开启代理
     off                     关闭代理
     restart                 重启代理服务
-    proxy    [on|off]       系统代理环境变量
-    port     [status|auto|set]  代理端口模式设置
+    proxy    [on|off|status]       系统代理环境变量
+    port     [status|auto|set]     代理端口模式设置
     ui                      Web 控制台地址
     status                  进程运行状态
-    tun      [on|off]       Tun 模式 (需要权限)
+    tun      [on|off|status]       Tun 模式 (需要权限)
+    lan      [on|off|status]       局域网访问控制
     mixin    [-e|-r]        Mixin 配置文件
     secret   [SECRET]       Web 控制台密钥
     subscribe [URL]         设置或查看订阅地址

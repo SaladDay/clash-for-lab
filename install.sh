@@ -29,9 +29,13 @@ if ! tar -xf "$ZIP_YQ" -C "${MIHOMO_BASE_DIR}/bin"; then
     _error_quit "解压 yq 失败: $ZIP_YQ"
 fi
 
-if [ -f "${MIHOMO_BASE_DIR}/bin"/yq_* ]; then
-    mv "${MIHOMO_BASE_DIR}/bin"/yq_* "${MIHOMO_BASE_DIR}/bin/yq"
-fi
+# 重命名 yq 二进制文件（yq_linux_amd64 -> yq）
+for yq_file in "${MIHOMO_BASE_DIR}/bin"/yq_*; do
+    if [ -f "$yq_file" ]; then
+        mv "$yq_file" "${MIHOMO_BASE_DIR}/bin/yq"
+        break
+    fi
+done
 chmod +x "${MIHOMO_BASE_DIR}/bin/yq"
 
 # 设置二进制文件路径
@@ -84,7 +88,8 @@ _okcat '  • 查看状态: clash status'
 _okcat '  • Web控制台: clash ui'
 _okcat '  • 更新订阅: clash update [auto|log]'
 _okcat '  • 设置订阅: clash subscribe [URL]'
-_okcat '  • 系统代理: clash proxy [on|off]'
+_okcat '  • 系统代理: clash proxy [on|off|status]'
+_okcat '  • 局域网访问: clash lan [on|off|status]'
 _okcat ''
 _okcat '🏠' "安装目录: $MIHOMO_BASE_DIR"
 _okcat '📁' "配置目录: $MIHOMO_BASE_DIR/config/"
