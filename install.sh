@@ -65,6 +65,7 @@ fi
 cp -rf "$SCRIPT_BASE_DIR" "$MIHOMO_BASE_DIR/"
 cp "$RESOURCES_BASE_DIR"/*.yaml "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.mmdb "$MIHOMO_BASE_DIR/" 2>/dev/null || true
+cp "$RESOURCES_BASE_DIR"/*.dat "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 
 if ! tar -xf "$ZIP_UI" -C "$MIHOMO_BASE_DIR"; then
     _error_quit "解压 UI 文件失败: $ZIP_UI"
