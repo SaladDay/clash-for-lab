@@ -327,7 +327,7 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 
 - [mihomo](https://github.com/MetaCubeX/mihomo) - 高性能的代理内核
 - [subconverter](https://github.com/tindy2013/subconverter) - 订阅转换工具
-- [yacd](https://github.com/haishanh/yacd) - Web 控制台界面
+- [zashboard](https://github.com/Zephyruso/zashboard) - Web 控制台界面
 - [yq](https://github.com/mikefarah/yq) - YAML 处理工具
 
 ### 参考资料

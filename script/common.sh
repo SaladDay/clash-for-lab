@@ -19,7 +19,7 @@ ZIP_CLASH=$(echo ${ZIP_BASE_DIR}/clash*)
 ZIP_MIHOMO=$(echo ${ZIP_BASE_DIR}/mihomo*)
 ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
 ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
-ZIP_UI="${ZIP_BASE_DIR}/yacd.tar.xz"
+ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
 
 MIHOMO_BASE_DIR="$HOME/tools/mihomo"
 MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"

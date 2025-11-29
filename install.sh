@@ -67,9 +67,11 @@ cp "$RESOURCES_BASE_DIR"/*.yaml "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.mmdb "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 cp "$RESOURCES_BASE_DIR"/*.dat "$MIHOMO_BASE_DIR/" 2>/dev/null || true
 
-if ! tar -xf "$ZIP_UI" -C "$MIHOMO_BASE_DIR"; then
+# 解压 zashboard UI
+if ! unzip -q -o "$ZIP_UI" -d "$MIHOMO_BASE_DIR"; then
     _error_quit "解压 UI 文件失败: $ZIP_UI"
 fi
+mv "${MIHOMO_BASE_DIR}/dist" "${MIHOMO_BASE_DIR}/ui"
 
 # 设置 shell 配置
 _set_rc
