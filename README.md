@@ -3,7 +3,16 @@
 ![GitHub License](https://img.shields.io/github/license/nelvko/clash-for-linux-install)
 ![GitHub top language](https://img.shields.io/github/languages/top/nelvko/clash-for-linux-install)
 
-![preview](resources/image.png)
+<table>
+  <tr>
+    <td align="center"><b>命令行界面</b></td>
+    <td align="center"><b>TUI 交互式界面</b></td>
+  </tr>
+  <tr>
+    <td><img src="resources/image.png" alt="命令行界面" width="400"/></td>
+    <td><img src="resources/tui.png" alt="TUI 交互式界面" width="400"/></td>
+  </tr>
+</table>
 
 ## 项目简介
 
@@ -24,6 +33,7 @@ Clash for Lab 完美解决了这些问题。
 - **用户空间运行**：无需 `sudo` 权限，安装到用户目录 `~/tools/mihomo/`
 - **智能端口管理**：自动检测端口冲突并分配可用端口，支持固定端口模式
 - **局域网访问控制**：支持开启/关闭局域网访问，方便多设备共享代理
+- **TUI 交互式界面**：终端下的图形化管理界面，实时监控流量和连接状态
 - **命令行操作**：完全基于命令行，适合无 GUI 环境
 - **多架构支持**：适配主流 Linux 发行版（CentOS、Debian、Ubuntu 等）
 - **进程管理**：基于 PID 文件管理，无需 systemd 服务
@@ -111,6 +121,7 @@ Commands:
     proxy    [on|off|status]       系统代理环境变量
     port     [status|auto|set]     代理端口模式设置
     ui                      Web 控制台地址
+    tui                     TUI 交互式界面
     status                  进程运行状态
     tun      [on|off|status]       Tun 模式 (需要权限)
     lan      [on|off|status]       局域网访问控制
@@ -192,7 +203,24 @@ clash lan off
 
 > 注意：开启局域网访问前，请确保网络环境安全，避免代理被未授权使用。
 
-#### 3.3 Web 控制台管理
+#### 3.3 TUI 交互式界面
+
+```bash
+# 启动 TUI 界面
+clash tui
+```
+
+TUI 界面基于 [clashctl](https://github.com/George-Miao/clashctl) 项目，首次使用时会自动下载。
+
+功能特性：
+- 实时流量监控和图表展示
+- 查看当前连接数和速度统计
+- 切换代理节点和规则
+- 查看日志和配置信息
+
+> 提示：使用数字键 1-6 切换不同面板，按 `q` 退出。
+
+#### 3.4 Web 控制台管理
 
 ```bash
 # 查看控制台地址
@@ -212,7 +240,7 @@ clash secret
 - 监控流量统计
 - 测试节点延迟
 
-#### 3.4 订阅管理
+#### 3.5 订阅管理
 
 ```bash
 # 设置订阅地址
@@ -230,7 +258,7 @@ clash update auto
 # TODO:自定义更新天数
 ```
 
-#### 3.5 高级配置
+#### 3.6 高级配置
 
 ```bash
 # 编辑自定义配置（Mixin）
@@ -278,7 +306,8 @@ clash-for-lab/
 ├── bin/                    # 二进制文件
 │   ├── mihomo              # 主程序
 │   ├── subconverter        # 订阅转换工具
-│   └── yq                  # YAML 处理工具
+│   ├── yq                  # YAML 处理工具
+│   └── clashctl-tui        # TUI 界面 (首次使用时自动下载)
 ├── config/                 # 配置文件
 │   ├── config.yaml         # 主配置文件
 │   ├── mixin.yaml          # 自定义配置
@@ -329,6 +358,7 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 - [subconverter](https://github.com/tindy2013/subconverter) - 订阅转换工具
 - [zashboard](https://github.com/Zephyruso/zashboard) - Web 控制台界面
 - [yq](https://github.com/mikefarah/yq) - YAML 处理工具
+- [clashctl](https://github.com/George-Miao/clashctl) - TUI 交互式控制界面
 
 ### 参考资料
 

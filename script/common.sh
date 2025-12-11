@@ -19,7 +19,9 @@ ZIP_CLASH=$(echo ${ZIP_BASE_DIR}/clash*)
 ZIP_MIHOMO=$(echo ${ZIP_BASE_DIR}/mihomo*)
 ZIP_YQ=$(echo ${ZIP_BASE_DIR}/yq*)
 ZIP_SUBCONVERTER=$(echo ${ZIP_BASE_DIR}/subconverter*)
+
 ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
+ZIP_CLASHCTL=$(echo ${ZIP_BASE_DIR}/clashctl*)
 
 MIHOMO_BASE_DIR="$HOME/tools/mihomo"
 MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
@@ -278,6 +280,50 @@ _is_already_in_use() {
     _is_bind "$port" | grep -qs -v "$progress"
 }
 
+# 生成 clashctl-tui 配置文件内容（RON 格式）
+# 参数：服务器名称、URL、密钥（可选）
+_generate_clashctl_config() {
+    local name=$1
+    local url=$2
+    local secret=$3
+
+    # RON 格式要求：密钥为空时用 None，有值时用 Some("value")
+    local secret_value="None,"
+    if [ -n "$secret" ]; then
+        secret_value="Some(\"$secret\"),"
+    fi
+
+    cat <<EOFRON
+(
+  servers: [
+    (
+      name: "$name",
+      url: "$url",
+      secret: $secret_value
+    ),
+  ],
+  using: Some("$url"),
+  tui: (
+    log_file: None,
+  ),
+  sort: (
+    connections: (
+      by: time,
+      order: descendant,
+    ),
+    rules: (
+      by: payload,
+      order: descendant,
+    ),
+    proxies: (
+      by: delay,
+      order: ascendant,
+    ),
+  ),
+)
+EOFRON
+}
+
 # Removed _is_root function - not needed in userspace
 
 function _valid_env() {
@@ -361,6 +407,37 @@ _download_raw_config() {
             --output-document "$dest" \
             "$url"
 }
+
+# 下载 clashctl-tui (懒加载)
+_download_tui() {
+    local dest="${MIHOMO_BASE_DIR}/bin/clashctl-tui"
+    local url="https://github.com/saladday/clashctl/releases/latest/download/clashctl-Linux"
+    local proxy_url="${URL_GH_PROXY}/${url}"
+
+    mkdir -p "$(dirname "$dest")"
+
+    _okcat "首次使用 TUI，正在下载 clashctl-tui..."
+    _okcat "尝试代理下载: ${proxy_url}"
+
+    # 优先尝试代理下载
+    if curl --progress-bar --show-error --fail --connect-timeout 10 --location --output "$dest" "$proxy_url" 2>/dev/null; then
+        chmod +x "$dest"
+        _okcat "下载完成"
+        return 0
+    fi
+
+    _okcat "代理下载失败，尝试直连..."
+    if curl --progress-bar --show-error --fail --connect-timeout 10 --location --output "$dest" "$url" 2>/dev/null; then
+        chmod +x "$dest"
+        _okcat "下载完成"
+        return 0
+    fi
+
+    rm -f "$dest"
+    _failcat "下载失败，请检查网络或手动下载: $url"
+    return 1
+}
+
 _download_convert_config() {
     local dest=$1
     local url=$2
