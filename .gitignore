@@ -58,6 +58,7 @@ subconverter
 *.7z
 !resources/zip/*.tar.xz
 !resources/zip/*.gz
+!resources/zip/*.zip
 
 # Environment files
 .env
