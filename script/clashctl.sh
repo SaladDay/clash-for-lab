@@ -90,7 +90,7 @@ _verify_actual_ports() {
     local actual_proxy_port=$(grep "Mixed(http+socks) proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     [ -z "$actual_proxy_port" ] && actual_proxy_port=$(grep "HTTP proxy listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
     
-    local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*127\.0\.0\.1:\([0-9]*\).*/\1/p')
+    local actual_ui_port=$(grep "RESTful API listening at:" "$log_file" | tail -1 | sed -n 's/.*:\([0-9]\+\)[^0-9]*$/\1/p')
     local actual_dns_port=$(grep "DNS server(UDP) listening at:" "$log_file" | tail -1 | sed -n 's/.*\[::\]:\([0-9]*\).*/\1/p')
     
     # 从配置文件获取期望端口进行比较
@@ -377,6 +377,44 @@ function clashui() {
     printf "║                                               ║\n"
     printf "╚═══════════════════════════════════════════════╝\n"
     printf "\n"
+}
+
+function clashtui() {
+    local clashctl_bin="${MIHOMO_BASE_DIR}/bin/clashctl-tui"
+
+    # 懒加载: 首次使用时下载 TUI 工具
+    if [ ! -x "$clashctl_bin" ]; then
+        _download_tui || return 1
+    fi
+
+    # 确保 mihomo 运行
+    if ! is_mihomo_running; then
+        _okcat "正在启动 mihomo..."
+        clashon || return 1
+    fi
+
+    # 获取实际端口
+    _verify_actual_ports
+    _get_ui_port
+
+    # 检查端口可用性
+    if ! _is_bind "$UI_PORT" 2>/dev/null; then
+        _failcat "API 端口 ${UI_PORT} 未监听，请执行 clash status 检查"
+        return 1
+    fi
+
+    # 生成配置并启动 TUI
+    local endpoint="http://127.0.0.1:${UI_PORT}"
+    local api_secret=$("$BIN_YQ" '.secret // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    local config_file="${MIHOMO_BASE_DIR}/config/clashctl.ron"
+
+    _generate_clashctl_config "mihomo-local" "$endpoint" "$api_secret" > "$config_file" || {
+        _failcat "生成配置失败"
+        return 1
+    }
+
+    _okcat "正在连接 $endpoint ..."
+    "$clashctl_bin" --config-path "$config_file" tui
 }
 
 _merge_config_restart() {
@@ -726,6 +764,9 @@ function clashctl() {
         shift
         clashupdate "$@"
         ;;
+    tui)
+        clashtui
+        ;;
     *)
         cat <<EOF
 
@@ -738,10 +779,11 @@ Commands:
     on                      开启代理
     off                     关闭代理
     restart                 重启代理服务
+    status                  进程运行状态
+    tui                     交互式终端界面（TUI）
+    ui                      Web 控制台地址
     proxy    [on|off|status]       系统代理环境变量
     port     [status|auto|set]     代理端口模式设置
-    ui                      Web 控制台地址
-    status                  进程运行状态
     tun      [on|off|status]       Tun 模式 (需要权限)
     lan      [on|off|status]       局域网访问控制
     mixin    [-e|-r]        Mixin 配置文件
