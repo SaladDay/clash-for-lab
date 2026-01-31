@@ -387,25 +387,77 @@ _download_raw_config() {
     local dest=$1
     local url=$2
     local agent='clash-verge/v2.0.4'
-    curl \
+    local tmp
+    tmp=$(mktemp 2>/dev/null) || tmp="${dest}.tmp.$$"
+
+    _cleanup_tmp() { rm -f "$tmp"; }
+
+    # 订阅地址常见 302 跳转；同时需要对 4xx/5xx 做失败处理，避免写入 HTML/错误页导致后续解析失败。
+    # 优先直连（历史行为），失败后再尝试走当前环境代理（mihomo 开启后可用）。
+    if curl \
         --silent \
         --show-error \
+        --fail \
+        --location \
+        --max-redirs 5 \
+        --compressed \
         --insecure \
-        --connect-timeout 4 \
-        --retry 1 \
+        --connect-timeout 10 \
+        --max-time 30 \
+        --retry 2 \
         --noproxy "*" \
         --user-agent "$agent" \
-        --output "$dest" \
-        "$url" ||
-        wget \
-            --no-verbose \
-            --no-check-certificate \
-            --timeout 3 \
-            --tries 1 \
-            --no-proxy \
-            --user-agent "$agent" \
-            --output-document "$dest" \
-            "$url"
+        --output "$tmp" \
+        "$url"; then
+        mv -f "$tmp" "$dest"
+        return 0
+    fi
+
+    if curl \
+        --silent \
+        --show-error \
+        --fail \
+        --location \
+        --max-redirs 5 \
+        --compressed \
+        --insecure \
+        --connect-timeout 10 \
+        --max-time 30 \
+        --retry 2 \
+        --user-agent "$agent" \
+        --output "$tmp" \
+        "$url"; then
+        mv -f "$tmp" "$dest"
+        return 0
+    fi
+
+    if wget \
+        --no-verbose \
+        --no-check-certificate \
+        --timeout 10 \
+        --tries 2 \
+        --user-agent "$agent" \
+        --output-document "$tmp" \
+        "$url" 2>/dev/null; then
+        mv -f "$tmp" "$dest"
+        return 0
+    fi
+
+    if wget \
+        --no-verbose \
+        --no-check-certificate \
+        --timeout 10 \
+        --tries 1 \
+        --no-proxy \
+        --user-agent "$agent" \
+        --output-document "$tmp" \
+        "$url" 2>/dev/null; then
+        mv -f "$tmp" "$dest"
+        return 0
+    fi
+
+    _cleanup_tmp
+    return 1
 }
 
 # 下载 clashctl-tui (懒加载)
@@ -441,7 +493,7 @@ _download_tui() {
 _download_convert_config() {
     local dest=$1
     local url=$2
-    _start_convert
+    _start_convert || return 1
     local convert_url=$(
         target='clash'
         base_url="http://127.0.0.1:${BIN_SUBCONVERTER_PORT}/sub"
@@ -455,7 +507,9 @@ _download_convert_config() {
             "$base_url"
     )
     _download_raw_config "$dest" "$convert_url"
+    local status=$?
     _stop_convert
+    return $status
 }
 function _download_config() {
     local dest=$1
@@ -470,26 +524,32 @@ function _download_config() {
 }
 
 _start_convert() {
+    # Ensure config exists (YAML) so we can manage port reliably.
+    [ ! -e "$BIN_SUBCONVERTER_CONFIG" ] && {
+        cp -f "$BIN_SUBCONVERTER_DIR/pref.example.yml" "$BIN_SUBCONVERTER_CONFIG" 2>/dev/null || true
+    }
+
+    local config_port
+    config_port=$("$BIN_YQ" '.server.port // ""' "$BIN_SUBCONVERTER_CONFIG" 2>/dev/null)
+    [[ $config_port =~ ^[0-9]+$ ]] && BIN_SUBCONVERTER_PORT=$config_port
+
     _is_already_in_use $BIN_SUBCONVERTER_PORT 'subconverter' && {
         local newPort=$(_get_random_port)
         _failcat '🎯' "端口占用：$BIN_SUBCONVERTER_PORT 🎲 随机分配：$newPort"
-        [ ! -e "$BIN_SUBCONVERTER_CONFIG" ] && {
-            cp -f "$BIN_SUBCONVERTER_DIR/pref.example.yml" "$BIN_SUBCONVERTER_CONFIG"
-        }
         "$BIN_YQ" -i ".server.port = $newPort" "$BIN_SUBCONVERTER_CONFIG"
         BIN_SUBCONVERTER_PORT=$newPort
     }
     local start=$(date +%s)
     # 子shell运行，屏蔽kill时的输出
-    ("$BIN_SUBCONVERTER" 2>&1 | tee "$BIN_SUBCONVERTER_LOG" >/dev/null &)
+    (cd "$BIN_SUBCONVERTER_DIR" && "$BIN_SUBCONVERTER" 2>&1 | tee "$BIN_SUBCONVERTER_LOG" >/dev/null &)
     while ! _is_bind "$BIN_SUBCONVERTER_PORT" >&/dev/null; do
         sleep 1s
         local now=$(date +%s)
-        [ $((now - start)) -gt 1 ] && _error_quit "订阅转换服务未启动，请检查日志：$BIN_SUBCONVERTER_LOG"
+        [ $((now - start)) -gt 10 ] && _error_quit "订阅转换服务未启动，请检查日志：$BIN_SUBCONVERTER_LOG"
     done
 }
 _stop_convert() {
-    pkill -9 -f "$BIN_SUBCONVERTER" >&/dev/null
+    pkill -9 -f "$BIN_SUBCONVERTER" >&/dev/null || true
 }
 
 # User-space process management functions
