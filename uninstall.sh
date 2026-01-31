@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+cd "$SCRIPT_DIR" || exit 1
 . "${SCRIPT_DIR}/script/common.sh"
 . "${SCRIPT_DIR}/script/clashctl.sh"
 

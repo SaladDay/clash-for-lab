@@ -665,6 +665,12 @@ function clashupdate() {
 
     # 如果是自动更新模式，则设置用户级定时任务
     [ "$is_auto" = true ] && {
+        # Persist URL for cron runs (cron executes `mihomoctl update`, which reads MIHOMO_CONFIG_URL).
+        [ "${url:0:4}" = "http" ] && {
+            mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
+            echo "$url" > "$MIHOMO_CONFIG_URL"
+        }
+
         # Check if crontab entry already exists
         crontab -l 2>/dev/null | grep -qs 'mihomoctl_auto_update' || {
             # Add user-level crontab entry (every 2 days at midnight)
