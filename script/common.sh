@@ -254,8 +254,15 @@ function _failcat() {
     _get_color_msg "$color" "$msg" >&2 && return 1
 }
 
+_has_tty() {
+    [ -t 0 ] && [ -t 1 ]
+}
+
 function _quit() {
-    exec "$_SHELL" -i
+    if [ -n "$_SHELL" ] && _has_tty; then
+        exec "$_SHELL" -i
+    fi
+    return 0
 }
 
 function _error_quit() {
@@ -266,7 +273,13 @@ function _error_quit() {
         local msg="${emoji} $1"
         _get_color_msg "$color" "$msg"
     }
-    exec $_SHELL -i
+    [ -z "$_SHELL" ] && _SHELL=bash
+
+    if _has_tty; then
+        exec "$_SHELL" -i
+    fi
+
+    exit 1
 }
 
 _is_bind() {
@@ -328,19 +341,23 @@ EOFRON
 
 function _valid_env() {
     # 用户空间运行，不需要root权限检查
-    [ -n "$ZSH_VERSION" ] && [ -n "$BASH_VERSION" ] && _error_quit "仅支持：bash、zsh"
-    # 用户空间不依赖systemd，移除相关检查
+    if [ -z "$ZSH_VERSION" ] && [ -z "$BASH_VERSION" ]; then
+        _failcat "仅支持：bash、zsh (例如: bash install.sh)"
+        return 1
+    fi
+    return 0
 }
 
 function _valid_config() {
-    [ -e "$1" ] && [ "$(wc -l <"$1")" -gt 1 ] && {
-        local cmd msg
-        cmd="$BIN_KERNEL -d $(dirname "$1") -f $1 -t"
-        msg=$(eval "$cmd") || {
-            eval "$cmd"
-            echo "$msg" | grep -qs "unsupport proxy type" && _error_quit "不支持的代理协议，请安装 mihomo 内核"
-        }
+    [ -e "$1" ] && [ "$(wc -l <"$1")" -gt 1 ] || return 1
+
+    local msg
+    msg=$("$BIN_KERNEL" -d "$(dirname "$1")" -f "$1" -t 2>&1) || {
+        echo "$msg" | grep -qs "unsupport proxy type" && _error_quit "不支持的代理协议，请安装 mihomo 内核"
+        return 1
     }
+
+    return 0
 }
 
 _download_clash() {
@@ -553,6 +570,25 @@ _stop_convert() {
 }
 
 # User-space process management functions
+_is_mihomo_pid() {
+    local pid=$1
+    [[ $pid =~ ^[0-9]+$ ]] || return 1
+
+    if [ -r "/proc/$pid/exe" ] && command -v readlink >/dev/null 2>&1; then
+        local exe expected
+        exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)
+        expected=$(readlink -f "$BIN_KERNEL" 2>/dev/null || true)
+        [ -n "$exe" ] && [ -n "$expected" ] && [ "$exe" = "$expected" ] && return 0
+    fi
+
+    local args
+    args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+    [ -n "$args" ] || return 1
+    echo "$args" | grep -Fqs " -d $MIHOMO_BASE_DIR" || return 1
+    echo "$args" | grep -Fqs " -f $MIHOMO_CONFIG_RUNTIME" || return 1
+    return 0
+}
+
 start_mihomo() {
     local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
     local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
@@ -605,6 +641,12 @@ stop_mihomo() {
         _okcat "PID 文件为空，已清理"
         return 0
     fi
+
+    if ! _is_mihomo_pid "$pid"; then
+        _failcat "PID 文件指向非 mihomo 进程，已清理 PID 文件以避免误杀 (PID: $pid)"
+        rm -f "$pid_file"
+        return 1
+    fi
     
     # Try graceful shutdown first
     if kill "$pid" 2>/dev/null; then
@@ -641,7 +683,7 @@ is_mihomo_running() {
     [ -z "$pid" ] && return 1
     
     # Check if process is actually running
-    kill -0 "$pid" 2>/dev/null
+    kill -0 "$pid" 2>/dev/null && _is_mihomo_pid "$pid"
 }
 
 _resolve_port_conflicts() {

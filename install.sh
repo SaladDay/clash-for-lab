@@ -1,10 +1,11 @@
-# shellcheck disable=SC2148
+#!/usr/bin/env bash
 # shellcheck disable=SC1091
-. script/common.sh >/dev/null 2>&1
-. script/clashctl.sh >/dev/null 2>&1
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "${SCRIPT_DIR}/script/common.sh"
+. "${SCRIPT_DIR}/script/clashctl.sh"
 
 # 用于检查环境是否有效
-_valid_env
+_valid_env || exit 1
 
 if [ -d "$MIHOMO_BASE_DIR" ]; then
     _error_quit "请先执行卸载脚本,以清除安装路径：$MIHOMO_BASE_DIR"

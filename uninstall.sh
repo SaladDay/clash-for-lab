@@ -1,15 +1,16 @@
-# shellcheck disable=SC2148
+#!/usr/bin/env bash
 # shellcheck disable=SC1091
-. script/common.sh >&/dev/null
-. script/clashctl.sh >&/dev/null
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "${SCRIPT_DIR}/script/common.sh"
+. "${SCRIPT_DIR}/script/clashctl.sh"
 
-_valid_env
+_valid_env || exit 1
 
 # 停止 mihomo 进程
 mihomoctl off >&/dev/null
 
 # 移除用户级定时任务
-crontab -l 2>/dev/null | grep -v 'mihomoctl.*update.*auto' | crontab - 2>/dev/null
+crontab -l 2>/dev/null | grep -v 'mihomoctl_auto_update' | crontab - 2>/dev/null
 
 # 删除用户目录安装
 rm -rf "$MIHOMO_BASE_DIR"

@@ -666,9 +666,9 @@ function clashupdate() {
     # 如果是自动更新模式，则设置用户级定时任务
     [ "$is_auto" = true ] && {
         # Check if crontab entry already exists
-        crontab -l 2>/dev/null | grep -qs 'mihomoctl.*update.*auto' || {
+        crontab -l 2>/dev/null | grep -qs 'mihomoctl_auto_update' || {
             # Add user-level crontab entry (every 2 days at midnight)
-            (crontab -l 2>/dev/null; echo "0 0 */2 * * $_SHELL -i -c 'mihomoctl update auto $url'") | crontab -
+            (crontab -l 2>/dev/null; echo "0 0 */2 * * $_SHELL -i -c 'mihomoctl update' # mihomoctl_auto_update") | crontab -
         }
         _okcat "已设置用户级定时更新订阅 (每2天执行一次)" && return 0
     }
@@ -684,13 +684,14 @@ function clashupdate() {
         # Restore backup using user permissions
         cp "$MIHOMO_CONFIG_RAW_BAK" "$MIHOMO_CONFIG_RAW" 2>/dev/null
         echo "[$(date +"%Y-%m-%d %H:%M:%S")] 订阅更新失败：$url" >> "${MIHOMO_UPDATE_LOG}"
-        _error_quit
+        return 1
     }
 
-    _download_config "$MIHOMO_CONFIG_RAW" "$url" || _rollback "下载失败：已回滚配置"
-    _valid_config "$MIHOMO_CONFIG_RAW" || _rollback "转换失败：已回滚配置，转换日志：$BIN_SUBCONVERTER_LOG"
+    _download_config "$MIHOMO_CONFIG_RAW" "$url" || { _rollback "下载失败：已回滚配置" || true; return 1; }
+    _valid_config "$MIHOMO_CONFIG_RAW" || { _rollback "转换失败：已回滚配置，转换日志：$BIN_SUBCONVERTER_LOG" || true; return 1; }
 
-    _merge_config_restart && _okcat '🍃' '订阅更新成功'
+    _merge_config_restart || return 1
+    _okcat '🍃' '订阅更新成功'
     
     # Save URL and log success using user permissions
     mkdir -p "$(dirname "$MIHOMO_CONFIG_URL")"
