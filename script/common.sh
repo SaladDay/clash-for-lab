@@ -42,6 +42,77 @@ CLASH_CONFIG_MIXIN="$MIHOMO_CONFIG_MIXIN"
 CLASH_CONFIG_RUNTIME="$MIHOMO_CONFIG_RUNTIME"
 CLASH_UPDATE_LOG="$MIHOMO_UPDATE_LOG"
 
+_is_dir_writable() {
+    local dir=$1
+    [ -n "$dir" ] && [ -d "$dir" ] && [ -w "$dir" ] && [ -x "$dir" ]
+}
+
+_set_tmpdir_default() {
+    # Respect user override if it is usable.
+    if _is_dir_writable "$TMPDIR"; then
+        export TMPDIR
+        export TMP="$TMPDIR"
+        export TEMP="$TMPDIR"
+        return 0
+    fi
+
+    local uid
+    uid=$(id -u 2>/dev/null || true)
+
+    local candidate
+    case "$uid" in
+    '' | *[!0-9]*)
+        ;;
+    *)
+        if _is_dir_writable "/run/user/$uid"; then
+            candidate="/run/user/$uid/mihomo-tmp"
+            mkdir -p "$candidate" 2>/dev/null || true
+            if _is_dir_writable "$candidate"; then
+                export TMPDIR="$candidate"
+                export TMP="$TMPDIR"
+                export TEMP="$TMPDIR"
+                return 0
+            fi
+        fi
+        ;;
+    esac
+
+    if _is_dir_writable "/dev/shm"; then
+        candidate="/dev/shm/mihomo-tmp-${USER:-$uid}"
+        mkdir -p "$candidate" 2>/dev/null || true
+        if _is_dir_writable "$candidate"; then
+            export TMPDIR="$candidate"
+            export TMP="$TMPDIR"
+            export TEMP="$TMPDIR"
+            return 0
+        fi
+    fi
+
+    if _is_dir_writable "$HOME"; then
+        candidate="$HOME/.cache/mihomo/tmp"
+        mkdir -p "$candidate" 2>/dev/null || true
+        if _is_dir_writable "$candidate"; then
+            export TMPDIR="$candidate"
+            export TMP="$TMPDIR"
+            export TEMP="$TMPDIR"
+            return 0
+        fi
+    fi
+
+    if [ -n "$MIHOMO_BASE_DIR" ]; then
+        candidate="$MIHOMO_BASE_DIR/tmp"
+        mkdir -p "$candidate" 2>/dev/null || true
+        if _is_dir_writable "$candidate"; then
+            export TMPDIR="$candidate"
+            export TMP="$TMPDIR"
+            export TEMP="$TMPDIR"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 _set_var() {
     local user=$USER
     local home=$HOME
@@ -69,6 +140,9 @@ _set_var() {
     
     # Legacy compatibility
     CLASH_CRON_TAB="$MIHOMO_CRON_TAB"
+
+    # Avoid using /tmp when / is full (bash heredoc, yq -i, mktemp, etc.).
+    _set_tmpdir_default || true
 }
 _set_var
 
