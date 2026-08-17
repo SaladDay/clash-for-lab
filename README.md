@@ -472,4 +472,4 @@ A: 不会。通过 Web UI 修改的代理模式（rule/global/direct）会自动
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=SaladDay/clash-for-lab&type=Date)](https://www.star-history.com/#SaladDay/clash-for-lab&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=SaladDay/clash-for-lab&type=Date)](https://star-history.dera.page/#SaladDay/clash-for-lab&Date)
