@@ -35,7 +35,7 @@ _script_release_owned_target() {
 _install_script_release() (
     local update_rc=${1:-true}
     local stage='' link_tmp='' old_target='' old_release='' legacy_recovery=''
-    local committed=false
+    local committed=false module
 
     cleanup() {
         local result=$?
@@ -66,10 +66,11 @@ _install_script_release() (
         cat "$stage/upgrade.sh"
         printf '\n'
         cat "$stage/clashctl.sh"
-        if [ -f "$stage/node.sh" ]; then
+        for module in node.sh subs.sh; do
+            [ -f "$stage/$module" ] || continue
             printf '\n'
-            cat "$stage/node.sh"
-        fi
+            cat "$stage/$module"
+        done
     } > "$stage/managed.sh" || return 1
     bash -n "$stage"/*.sh || return 1
     if command -v zsh >/dev/null 2>&1; then

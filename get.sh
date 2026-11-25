@@ -5,7 +5,7 @@
 
 usage() {
     cat <<'EOF'
-用法: get.sh ['订阅地址'] [--mirror https://镜像] [--ref 分支或标签]
+用法: get.sh ['订阅地址'] [--mirror https://镜像] [--dir 安装目录] [--ref 分支或标签]
 已安装时会升级管理脚本并保留配置；带订阅地址则同时更换订阅。
 EOF
 }
@@ -19,15 +19,16 @@ fetch() {
 
 main() {
     local repo=SaladDay/clash-for-lab ref=main mirror=${CLASH_MIRROR:-}
-    local url='' tool archive source_url fallback_url
+    local url='' dir='' tool archive source_url fallback_url
     while [ $# -gt 0 ]; do
         case "$1" in
-        --mirror|--ref|--url)
+        --mirror|--ref|--url|--dir)
             [ $# -ge 2 ] || { usage >&2; return 1; }
             case "$1" in
             --mirror) mirror=$2 ;;
             --ref) ref=$2 ;;
             --url) url=$2 ;;
+            --dir) dir=$2 ;;
             esac
             shift 2
             ;;
@@ -76,6 +77,7 @@ main() {
     # With `curl | bash` stdin is this script; give the installer the terminal.
     set -- "$WORK_DIR/src/install.sh"
     [ -z "$url" ] || set -- "$@" --url "$url"
+    [ -z "$dir" ] || set -- "$@" --dir "$dir"
     # The shell the installer may open at the end must not pin WORK_DIR, so
     # only let it read the prompt and print what to do next.
     if (exec </dev/tty) 2>/dev/null; then

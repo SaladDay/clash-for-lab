@@ -4,6 +4,10 @@
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")" && pwd -P)"
 cd "$SCRIPT_DIR" || exit 1
+# The installed copy always removes the installation it lives in.
+if [ -f bin/mihomo ] && [ -f script/managed.sh ]; then
+    CLASH_FOR_LAB_HOME=$SCRIPT_DIR
+fi
 . "${SCRIPT_DIR}/script/common.sh"
 . "${SCRIPT_DIR}/script/upgrade.sh"
 . "${SCRIPT_DIR}/script/clashctl.sh"
@@ -38,6 +42,11 @@ MIHOMO_OPERATION_LOCK_HELD=true
 
 case "$MIHOMO_BASE_DIR" in
 "$HOME"/tools/mihomo) ;;
+/|"$HOME"|"$HOME"/) _uninstall_fail "拒绝卸载：$MIHOMO_BASE_DIR" ;;
+/*)
+    [ -f "$MIHOMO_BASE_DIR/bin/mihomo" ] && [ -f "$MIHOMO_SCRIPT_DIR/managed.sh" ] ||
+        _uninstall_fail "不像 clash-for-lab 的安装目录，拒绝卸载：$MIHOMO_BASE_DIR"
+    ;;
 *) _uninstall_fail "拒绝卸载非标准路径：$MIHOMO_BASE_DIR" ;;
 esac
 [ -d "$MIHOMO_BASE_DIR" ] && [ ! -L "$MIHOMO_BASE_DIR" ] ||
@@ -72,6 +81,7 @@ UNINSTALL_LOCK_HELD=false
 MIHOMO_OPERATION_LOCK_HELD=false
 
 _launcher_remove || true
+[ "$(cat "$MIHOMO_HOME_POINTER" 2>/dev/null)" != "$MIHOMO_BASE_DIR" ] || rm -f "$MIHOMO_HOME_POINTER"
 # The installed copy of this script runs from inside the removed directory.
 cd "$HOME" || cd /
 if ! rm -rf -- "$recovery_dir"; then

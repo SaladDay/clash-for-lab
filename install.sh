@@ -3,6 +3,31 @@
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_SOURCE")" && pwd -P)"
 cd "$SCRIPT_DIR" || exit 1
+# The location decides every path in common.sh, so read --dir first. All parents
+# are created and resolved here; mihomo itself is created later, atomically.
+INSTALL_DIR=
+install_previous=
+for install_arg in "$@"; do
+    [ "$install_previous" != --dir ] || INSTALL_DIR=$install_arg
+    install_previous=$install_arg
+done
+if [ -n "$INSTALL_DIR" ]; then
+    case "$INSTALL_DIR" in
+    /*) ;;
+    *) printf '%s\n' '--dir 需要绝对路径' >&2; exit 1 ;;
+    esac
+    case "$INSTALL_DIR" in
+    *[!A-Za-z0-9_./-]*) printf '%s\n' '--dir 只能包含字母、数字和 . _ - /' >&2; exit 1 ;;
+    esac
+    mkdir -p "$(dirname "$INSTALL_DIR")" || exit 1
+    CLASH_FOR_LAB_HOME="$(cd "$(dirname "$INSTALL_DIR")" && pwd -P)/$(basename "$INSTALL_DIR")" || exit 1
+    install_recorded=$(cat "$HOME/.config/clash-for-lab/home" 2>/dev/null || true)
+    [ -n "$install_recorded" ] || install_recorded="$HOME/tools/mihomo"
+    if [ "$install_recorded" != "$CLASH_FOR_LAB_HOME" ] && [ -d "$install_recorded/bin" ]; then
+        printf '%s\n' "已安装在 ${install_recorded}，请先执行 clash uninstall" >&2
+        exit 1
+    fi
+fi
 . "${SCRIPT_DIR}/script/common.sh"
 . "${SCRIPT_DIR}/script/upgrade.sh"
 . "${SCRIPT_DIR}/script/clashctl.sh"
@@ -61,7 +86,8 @@ _install_cleanup() {
         fi
         if [ "$cleanup_ok" = true ]; then
             case "$MIHOMO_BASE_DIR" in
-            "$HOME"/tools/mihomo) rm -rf -- "$MIHOMO_BASE_DIR" ;;
+            # Only reached for a directory this run created itself.
+            "$HOME"/tools/mihomo|"${CLASH_FOR_LAB_HOME:-$HOME/tools/mihomo}") rm -rf -- "$MIHOMO_BASE_DIR" ;;
             *) cleanup_ok=false ;;
             esac
         fi
@@ -194,6 +220,10 @@ while [ $# -gt 0 ]; do
         _okcat '✅' '管理脚本已刷新'
         _okcat '💡' '重新登录后可使用 clash upgrade'
         exit 0
+        ;;
+    --dir)
+        [ $# -ge 2 ] || _error_quit "--dir 需要一个参数"
+        shift 2
         ;;
     --url)
         [ $# -ge 2 ] || _error_quit "--url 需要一个参数"
@@ -345,6 +375,11 @@ fi
 # 启动代理服务（会自动合并配置和检查端口冲突）
 INSTALL_SERVICE_TOUCHED=true
 mihomoctl on || _error_quit "mihomo 启动失败，安装已回滚"
+
+if [ -n "$INSTALL_DIR" ]; then
+    _config_atomic_write "$MIHOMO_HOME_POINTER" "$MIHOMO_BASE_DIR" ||
+        _error_quit "记录安装位置失败：$MIHOMO_HOME_POINTER"
+fi
 
 # 最后才发布 shell 入口。此时所有大文件、配置和服务均已就绪，避免
 # 后续安装失败时留下指向已删除目录的 RC 行。

@@ -92,6 +92,19 @@ clash node use 香港 -g 流媒体  # 操作指定策略组
 
 选择会被记住，重启后仍然有效。完整命令见 `clash help`。
 
+### 多个订阅与自动更新
+
+```bash
+clash sub add 机场A '订阅地址'    # 保存
+clash sub use 机场A              # 切换；新订阅不可用时保留原配置
+clash sub                       # 列出
+clash autoupdate on 24          # 每 24 小时后台更新，需要看门狗（会自动启动）
+```
+
+### 安装到其他目录
+
+家目录配额不足时，在一键命令末尾加 `--dir /data/你的目录/mihomo`。位置会被记住，之后升级无需重复指定。
+
 ### 机器重启与共享家目录
 
 机器重启或进程被杀后，下次登录终端时会自动恢复代理；手动 `clash off` 过的不会。不需要时执行 `clash autostart off`，想在后台即时恢复可用 `clash watchdog on`。

@@ -445,6 +445,11 @@ MIHOMO_AUTOSTART_OFF="${MIHOMO_BASE_DIR}/config/autostart.off"
 # PID file means "the user still wants it running on this machine".
 _watch_proxy_recover() {
     local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
+    # `clash watchdog off` removes its PID file, so a leftover one means a reboot.
+    if [ -f "$MIHOMO_WATCHDOG_PID_FILE" ] && [ ! -e "$MIHOMO_AUTOSTART_OFF" ] &&
+        ! _watchdog_is_running; then
+        ( clashwatchdog on ) >/dev/null 2>&1 || rm -f "$MIHOMO_WATCHDOG_PID_FILE"
+    fi
     [ -f "$pid_file" ] && [ ! -e "$MIHOMO_AUTOSTART_OFF" ] || return 0
     is_mihomo_running && return 0
     _okcat '🔄' '代理曾意外停止（如机器重启），正在恢复...' >&2
@@ -739,7 +744,7 @@ function clashport() {
                 continue
             fi
 
-            if _is_already_in_use "$manual_port" "$BIN_KERNEL_NAME"; then
+            if _port_taken_by_others "$manual_port"; then
                 _failcat '🎯' "端口 $manual_port 已被占用"
                 _has_tty || {
                     _failcat "非交互环境无法选择新端口；请改用 clash port auto 或指定其他端口" || true
@@ -2024,6 +2029,14 @@ function clashctl() {
         shift
         clashautostart "$@"
         ;;
+    sub)
+        shift
+        clashsub "$@"
+        ;;
+    autoupdate)
+        shift
+        clashautoupdate "$@"
+        ;;
     env)
         clashenv
         ;;
@@ -2064,6 +2077,8 @@ Commands:
     mixin    [-e|-r]        Mixin 配置文件
     secret   [SECRET]       Web 控制台密钥
     subscribe [URL]         设置或查看订阅地址
+    sub      [ls|add|use|rm]       保存和切换多个订阅
+    autoupdate [on|off]     后台定期更新订阅
     update   [URL|log]      手动更新订阅配置
     upgrade  [rollback|status]     升级或回滚 mihomo 稳定版内核
     log      [N]            查看最近 N 行运行日志（默认 50）
@@ -2073,8 +2088,7 @@ Commands:
 
 说明:
     • 用户空间运行，无需 sudo 权限
-    • 配置目录: ~/tools/mihomo/
-    • 日志目录: ~/tools/mihomo/logs/
+    • 安装目录: $MIHOMO_BASE_DIR
     • 进程管理: 基于 PID 文件和 nohup
 
 EOF

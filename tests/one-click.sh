@@ -95,6 +95,57 @@ set -u
     [ "$(wc -l < "$calls" | tr -d ' ')" = 1 ] || fail 'a failing recovery was repeated'
 )
 
+# ── named subscriptions ────────────────────────────────────────────
+
+(
+    . "$repo_root/script/subs.sh"
+    MIHOMO_SUBS_FILE="$test_root/subs.tsv"
+    MIHOMO_CONFIG_URL="$test_root/suburl"
+    _okcat() { :; }
+    _failcat() { return 1; }
+    _mihomo_run_locked() { "$@"; }
+    clashsub add a 'https://a.example/s?t=1&x=\\n' || fail 'sub add'
+    clashsub add b 'https://b.example/s' || fail 'sub add second'
+    clashsub add a 'https://a2.example/s?t=2' || fail 'sub replace'
+    [ "$(wc -l < "$MIHOMO_SUBS_FILE" | tr -d ' ')" = 2 ] || fail 'sub replace duplicated'
+    [ "$(_subs_url a)" = 'https://a2.example/s?t=2' ] || fail 'sub url'
+    case "$(clashsub ls)" in *t=2*) fail 'sub ls leaked a token' ;; esac
+    ! clashsub add 'x y' https://a.example/s || fail 'name with space accepted'
+    ! clashsub use nope || fail 'unknown subscription accepted'
+    clashupdate() { printf '%s' "$1" > "$MIHOMO_CONFIG_URL"; }
+    clashsub use a
+    [ "$(cat "$MIHOMO_CONFIG_URL")" = 'https://a2.example/s?t=2' ] || fail 'sub use'
+    clashsub rm a && clashsub rm b
+    [ ! -e "$MIHOMO_SUBS_FILE" ] || fail 'sub rm'
+
+    MIHOMO_AUTOUPDATE_FILE="$test_root/au"
+    MIHOMO_AUTOUPDATE_STAMP="$test_root/au.last"
+    MIHOMO_CONFIG_RAW="$test_root/au.raw"
+    : > "$MIHOMO_CONFIG_RAW"
+    ! _autoupdate_is_due || fail 'autoupdate due while disabled'
+    printf '2\n' > "$MIHOMO_AUTOUPDATE_FILE"
+    ! _autoupdate_is_due || fail 'fresh config reported due'
+    touch -d '3 hours ago' "$MIHOMO_CONFIG_RAW"
+    _autoupdate_is_due || fail 'old config not due'
+    : > "$MIHOMO_AUTOUPDATE_STAMP"
+    ! _autoupdate_is_due || fail 'autoupdate retried within an hour'
+)
+
+# ── port ownership goes by process, not by program name ────────────
+
+(
+    MIHOMO_PORT_STATE="$test_root/ports"
+    printf 'PROXY_PORT=7890\n' > "$MIHOMO_PORT_STATE"
+    _find_managed_mihomo_pids() { printf '42\n'; }
+    _is_bind() { printf '%s\n' 'LISTEN 127.0.0.1:7890 users:(("mihomo",pid=42,fd=3))'; }
+    ! _port_taken_by_others 7890 || fail 'own listener reported as taken'
+    _is_bind() { printf '%s\n' 'LISTEN 127.0.0.1:7890 users:(("mihomo",pid=421,fd=3))'; }
+    _port_taken_by_others 7890 || fail 'a foreign mihomo was ignored'
+    _is_bind() { printf 'proc-net:1\n'; }
+    ! _port_taken_by_others 7890 || fail 'own port without process info reported as taken'
+    _port_taken_by_others 7891 || fail 'unknown port reported as free'
+)
+
 # ── node name resolution ───────────────────────────────────────────
 
 (

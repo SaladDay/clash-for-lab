@@ -738,6 +738,7 @@ if command -v flock >/dev/null 2>&1; then
     chmod 0755 "$BIN_SUBCONVERTER"
     MIHOMO_UPGRADE_LOCK_DIR="$test_root/converter-operation.lock"
     _is_already_in_use() { return 1; }
+    _port_taken_by_others() { return 1; }
     _is_bind() { return 0; }
     _upgrade_acquire_lock || fail 'failed to acquire converter inheritance test lock'
     _start_convert || fail 'failed to start converter inheritance fixture'

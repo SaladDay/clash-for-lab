@@ -14,9 +14,11 @@ interval=${2:-30}
 script_dir="${base_dir}/script"
 
 # Load management functions
+CLASH_FOR_LAB_HOME=$base_dir
 . "${script_dir}/common.sh"
 . "${script_dir}/upgrade.sh"
 . "${script_dir}/clashctl.sh"
+. "${script_dir}/subs.sh"
 pid_file="${base_dir}/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
 watchdog_pid_file="${base_dir}/config/watchdog${MIHOMO_HOST_SUFFIX:-}.pid"
 
@@ -37,7 +39,13 @@ while true; do
     [ -f "$pid_file" ] || continue
 
     # If mihomo is running, nothing to do
-    is_mihomo_running 2>/dev/null && continue
+    if is_mihomo_running 2>/dev/null; then
+        if _autoupdate_is_due; then
+            : > "$MIHOMO_AUTOUPDATE_STAMP"
+            clashupdate >/dev/null 2>&1 || true
+        fi
+        continue
+    fi
 
     # mihomo crashed (PID file exists but process is dead). The PID file is the
     # "should be running" marker, so it must survive a busy lock or a failed

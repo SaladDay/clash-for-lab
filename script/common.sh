@@ -19,7 +19,13 @@ MIHOMO_BUNDLE_LOCK="${RESOURCES_BASE_DIR}/mihomo.lock.tsv"
 ZIP_UI="${ZIP_BASE_DIR}/zashboard.zip"
 ZIP_CLASHCTL=$(echo ${ZIP_BASE_DIR}/clashctl*)
 
-MIHOMO_BASE_DIR="$HOME/tools/mihomo"
+# A custom install location (install.sh --dir) is recorded in this pointer.
+MIHOMO_HOME_POINTER="$HOME/.config/clash-for-lab/home"
+MIHOMO_BASE_DIR="${CLASH_FOR_LAB_HOME:-$(cat "$MIHOMO_HOME_POINTER" 2>/dev/null || true)}"
+case "$MIHOMO_BASE_DIR" in
+/?*) ;;
+*) MIHOMO_BASE_DIR="$HOME/tools/mihomo" ;;
+esac
 MIHOMO_SCRIPT_DIR="${MIHOMO_BASE_DIR}/$(basename $SCRIPT_BASE_DIR)"
 MIHOMO_CONFIG_URL="${MIHOMO_BASE_DIR}/url"
 MIHOMO_CONFIG_RAW="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG)"
@@ -463,6 +469,27 @@ _is_already_in_use() {
     local port=$1
     local progress=$2
     _is_bind "$port" | grep -qs -v "$progress"
+}
+
+# Whether a port mihomo wants is held by anyone but this installation's own
+# process. Matching the program name is not enough: the same user may run a
+# second mihomo, and tools without process info would blame our own listener.
+_port_taken_by_others() {
+    local port=$1 listeners own pid
+    listeners=$(_is_bind "$port") || return 1
+    own=$(_find_managed_mihomo_pids 2>/dev/null) || own=
+    [ -n "$own" ] || return 0
+    case "$listeners" in
+    *pid=*|*[0-9]/*)
+        while IFS= read -r pid; do
+            listeners=$(printf '%s\n' "$listeners" | grep -vE "pid=${pid},|[[:space:]]${pid}/")
+        done <<EOF
+$own
+EOF
+        [ -n "$listeners" ]
+        ;;
+    *) ! grep -Eqs "^(PROXY|UI|DNS)_PORT=${port}\$" "$MIHOMO_PORT_STATE" ;;
+    esac
 }
 
 # 生成 clashctl-tui 配置文件内容（RON 格式）
@@ -2003,7 +2030,7 @@ _resolve_port_conflicts() {
         MIXED_PORT=${mixed_port:-7890}
     fi
 
-    if _is_already_in_use "$MIXED_PORT" "$BIN_KERNEL_NAME"; then
+    if _port_taken_by_others "$MIXED_PORT"; then
         if [ "$PORT_PREF_MODE" = "manual" ]; then
             _failcat '🎯' "固定代理端口 ${MIXED_PORT} 已被占用；请执行 clash port set <端口> 或 clash port auto" || true
             return 1
@@ -2032,7 +2059,7 @@ _resolve_port_conflicts() {
         bind_addr="127.0.0.1"
     fi
 
-    if _is_already_in_use "$UI_PORT" "$BIN_KERNEL_NAME"; then
+    if _port_taken_by_others "$UI_PORT"; then
         local newPort
         newPort=$(_get_random_port) || return 1
         [ "$show_message" = true ] && _failcat '🎯' "UI端口占用：${UI_PORT} 🎲 随机分配：$newPort"
@@ -2055,7 +2082,7 @@ _resolve_port_conflicts() {
         dns_bind_addr="127.0.0.1"
     fi
 
-    if _is_already_in_use "$DNS_PORT" "$BIN_KERNEL_NAME"; then
+    if _port_taken_by_others "$DNS_PORT"; then
         local newPort
         newPort=$(_get_random_port) || return 1
         [ "$show_message" = true ] && _failcat '🎯' "DNS端口占用：${DNS_PORT} 🎲 随机分配：$newPort"

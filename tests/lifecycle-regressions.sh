@@ -101,6 +101,7 @@ _publish_new_config_validation_data() {
 }
 _rollback_new_config_validation_data() { return 0; }
 _is_already_in_use() { return 1; }
+_port_taken_by_others() { return 1; }
 _has_tty() { return 0; }
 is_mihomo_running() {
     [ "$(cat "$service_state" 2>/dev/null || true)" = running ]
