@@ -531,13 +531,34 @@ function _valid_upgrade_env() {
 function _valid_install_env() {
     _valid_upgrade_env || return 1
     local required
-    for required in tar unzip; do
+    for required in tar; do
         command -v "$required" >/dev/null 2>&1 || {
             _failcat "缺少安装依赖：$required"
             return 1
         }
     done
     return 0
+}
+
+# unzip is missing on many minimal servers and cannot be installed without
+# root, so use whatever can read a zip archive.
+_extract_zip() {
+    local archive=$1 destination=$2 python
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$archive" -d "$destination" && return 0
+    fi
+    for python in python3 python; do
+        command -v "$python" >/dev/null 2>&1 || continue
+        "$python" -c 'import sys, zipfile
+zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$destination" && return 0
+    done
+    if command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$archive" -C "$destination" && return 0
+    fi
+    if command -v busybox >/dev/null 2>&1; then
+        busybox unzip -q -o "$archive" -d "$destination" && return 0
+    fi
+    return 1
 }
 
 _is_config_validation_data_name() {
@@ -721,6 +742,11 @@ function _valid_config() (
 
     msg=$(SAFE_PATHS="$validation_safe_paths" timeout --kill-after=5 "${MIHOMO_CONFIG_TEST_TIMEOUT:-30}" \
         "$BIN_KERNEL" -d "$validation_home" -f "$config" -t 2>&1) || {
+        case "$?:$msg" in
+        124:*"start download"*)
+            _failcat '🍂' '配置引用了本机没有的 GEO 数据，内核下载超时' || true
+            ;;
+        esac
         if echo "$msg" | grep -qs "unsupport proxy type"; then
             _failcat "不支持的代理协议，请使用 mihomo 内核" || true
         fi
@@ -1847,9 +1873,11 @@ _start_mihomo_unlocked() (
 
     # Both processes ignore shell hangups. The process-substitution child
     # closes the lifecycle-lock descriptor and exits on EOF when Mihomo stops.
+    # `exec` matters: a lingering wrapper shell would keep the caller's stdout
+    # open and hang `clash on | tee` or `ssh host clash on` forever.
     # `$!` remains the Mihomo PID, so process identity checks are unchanged.
     nohup "$BIN_KERNEL" -d "$MIHOMO_BASE_DIR" -f "$MIHOMO_CONFIG_RUNTIME" \
-        > >(nohup "$log_writer" "$log_file" "$MIHOMO_LOG_MAX_BYTES" \
+        > >(exec nohup "$log_writer" "$log_file" "$MIHOMO_LOG_MAX_BYTES" \
             >/dev/null 2>&1 9>&-) 2>&1 9>&- &
 
     pid=$!

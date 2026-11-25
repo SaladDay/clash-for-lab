@@ -45,96 +45,62 @@ Clash for Lab 把安装、端口分配和日常管理都放在当前用户目录
 
 ## 快速开始
 
-### 环境要求
+只需要 Linux x86_64、`bash` 或 `zsh`，以及系统自带的 `curl`、`tar`、`gzip`。**不需要 sudo**，也不需要 `unzip`、`git`、systemd。
 
-- **用户权限**：普通用户权限即可，**无需 sudo 或 root**
-- **系统与架构**：Linux amd64（x86_64）
-- **Shell 支持**：`bash`、`zsh`
-- **基础命令**：`curl`、`flock`、`gzip`、`tar`、`timeout`、`unzip` 和 SHA256 校验工具
-- **代理订阅**：需要有效的 Clash 订阅链接
-
-### 安装步骤
-
-#### 1. 克隆项目
+### 一键安装
 
 ```bash
-git clone --depth 1 https://github.com/SaladDay/clash-for-lab.git
-cd clash-for-lab
+curl -fsSL https://raw.githubusercontent.com/SaladDay/clash-for-lab/main/get.sh | bash -s -- '你的订阅地址'
 ```
 
-如果当前网络无法直连 GitHub，可以用你信任的镜像完成首次克隆；后续执行 `clash upgrade` 仍需访问 GitHub 官方 API、Git 和 Raw 端点，以免版本锁或可执行文件被重定向到其他来源。
-
-#### 2. 运行安装脚本
+订阅地址要用单引号包住。`raw.githubusercontent.com` 连不上时，换成 GitHub API 入口：
 
 ```bash
-bash install.sh
+curl -fsSL -H 'Accept: application/vnd.github.raw' https://api.github.com/repos/SaladDay/clash-for-lab/contents/get.sh | bash -s -- '你的订阅地址'
 ```
 
-也可以通过 `--url` 参数直接传入订阅链接，跳过交互式输入：
+安装包也下载不动时，在末尾追加 `--mirror https://镜像地址`，指定一个**你信任的** GitHub 加速镜像。完全无法联网的机器，可以在别处下载仓库再传上去，执行 `bash install.sh '你的订阅地址'`。
+
+安装脚本会校验内核、避开被占用的端口、为管理 API 生成随机密钥、启动代理并检测能否访问外网；任何一步失败都会清理干净。重复执行同一条命令等于升级管理脚本，**配置会保留**；带上新的订阅地址则同时更换订阅。
+
+### 装好之后
+
+新开的终端会自动使用代理，当前终端执行 `exec bash`（zsh 用户 `exec zsh`）即可生效。
 
 ```bash
-bash install.sh --url 'https://your-subscription-url'
+clash status              # 状态和连通性
+clash node                # 列出节点，输入序号切换
+clash node best           # 测速并切到最快的节点
+clash off / clash on      # 关闭 / 开启
+clash run pip install x   # 只让这一条命令走代理
+clash uninstall           # 卸载
 ```
 
-> 默认会安装在`~/tools/mihomo/`目录下
-
-* [ ] TODO: 自定义安装路径
-
-安装过程中会：
-
-- 校验并安装仓库中由 CI 同步的 mihomo 最新稳定版
-- 在没有现成配置时提示输入订阅地址
-- 配置用户环境变量
-- 设置命令行别名
-- 检测并分配可用端口
-- 将管理 API 和 DNS 限制在本机，并为管理 API 生成独立的 64 个十六进制字符随机密钥
-- 启动 mihomo；任一步失败都会清理本次产生的半安装目录
-
-安装完成后重新登录，或手动重新加载当前 Shell 的 RC 文件。以后更换订阅可使用 `clash subscribe '完整订阅地址'`，启动和停止分别使用 `clash on`、`clash off`。
-
-### 验证安装
-
-```bash
-# 检查服务状态
-clash status
-
-# 测试网络连接
-curl -I https://www.google.com
-```
+代理不通时，依次执行 `clash node best`、`clash update`、`clash doctor`、`clash log`。
 
 ## 使用教程
 
-### 1. 基本命令
-
-执行 `clash help` 查看所有可用命令：
+### 切换节点
 
 ```bash
-$ clash help
-Usage:
-    clash COMMAND  [OPTION]
-    mihomo COMMAND [OPTION]
-    mihomoctl COMMAND [OPTION]
-
-Commands:
-    on                      开启代理
-    off                     关闭代理
-    restart                 重启代理服务
-    proxy    [on|off|status]       系统代理环境变量
-    port     [status|auto|set]     代理端口模式设置
-    ui                      Web 控制台地址
-    tui                     TUI 交互式界面
-    status                  进程运行状态
-    doctor                  诊断并修复代理环境
-    tun      [on|off|status]       Tun 模式 (需要权限)
-    lan      [on|off|status]       局域网访问控制
-    mixin    [-e|-r]        Mixin 配置文件
-    secret   [SECRET]       Web 控制台密钥
-    subscribe [URL]         设置或查看订阅地址
-    update   [URL|log]      手动更新订阅配置
-    upgrade  [rollback|status]     升级或回滚 mihomo 稳定版内核
-
-
+clash node use 3            # 按序号
+clash node use 日本          # 按名称的一部分
+clash node test             # 全部测速
+clash node groups           # 查看所有策略组
+clash node use 香港 -g 流媒体  # 操作指定策略组
 ```
+
+选择会被记住，重启后仍然有效。完整命令见 `clash help`。
+
+### 在脚本和 Slurm 作业中使用
+
+安装时会创建 `~/.local/bin/clash`（已有同名命令则不覆盖）。非交互环境里这样加载代理变量：
+
+```bash
+eval "$(~/.local/bin/clash env)"
+```
+
+注意代理只监听 `127.0.0.1`，作业必须与代理运行在同一台机器上。
 
 ### 2. 使用流程
 
@@ -151,7 +117,7 @@ clash on
 clash status
 
 # 输出示例：
-# 😼 订阅地址: https://your-subscription-url
+# 😼 订阅地址: https://your-subscription-host/***
 # 😼 mihomo 进程状态: 运行中
 # 😼 进程 PID: 276368
 # 😼 运行时间: 04:53
@@ -316,7 +282,7 @@ bash install.sh --refresh
 ### 卸载
 
 ```bash
-bash uninstall.sh
+clash uninstall     # 或在仓库目录执行 bash uninstall.sh
 ```
 
 卸载脚本会先停止受管进程、清理 shell 入口，再删除标准安装目录 `~/tools/mihomo/`。安装中途失败时会清理本次新建的标准安装目录；如果进程或 shell 入口无法恢复，则保留现场并提示检查路径。
@@ -351,11 +317,14 @@ Mixin 配置文件（`~/tools/mihomo/mixin.yaml`）用于自定义代理行为�
 
 ```
 clash-for-lab/
+├── get.sh                  # 一键安装入口
 ├── install.sh              # 主安装脚本
 ├── uninstall.sh            # 卸载脚本
 ├── script/                 # 脚本目录
 │   ├── clashctl.sh         # 主控制脚本
+│   ├── clash-cli           # 供脚本和作业调用的命令入口
 │   ├── common.sh           # 公共函数库
+│   ├── node.sh             # 节点查看、切换、测速
 │   ├── install-lib.sh      # 管理脚本原子发布
 │   ├── log-writer.sh       # 有大小上限的私有日志写入器
 │   └── upgrade.sh          # 稳定版内核升级与回滚
@@ -363,6 +332,7 @@ clash-for-lab/
 │   ├── mihomo.lock.tsv     # CI 生成的稳定版版本锁
 │   ├── mixin.yaml          # Mixin 配置模板
 │   ├── Country.mmdb        # GeoIP 数据库
+│   ├── GeoSite.dat         # GEOSITE 规则数据，避免首次启动时从 GitHub 下载
 │   └── zip/                # CI 维护的内核包及其他预编译资源
 ├── tools/                  # CI 同步脚本
 ├── tests/                  # 同步、安装包、升级和回归测试

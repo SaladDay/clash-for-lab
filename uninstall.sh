@@ -43,6 +43,7 @@ esac
 [ -d "$MIHOMO_BASE_DIR" ] && [ ! -L "$MIHOMO_BASE_DIR" ] ||
     _uninstall_fail "安装目录不存在或类型异常：$MIHOMO_BASE_DIR"
 
+_watchdog_stop 2>/dev/null || true
 was_running=false
 is_mihomo_running && was_running=true
 stop_mihomo >/dev/null || _uninstall_fail "mihomo 未能停止，已取消卸载"
@@ -70,6 +71,9 @@ _upgrade_release_lock
 UNINSTALL_LOCK_HELD=false
 MIHOMO_OPERATION_LOCK_HELD=false
 
+_launcher_remove || true
+# The installed copy of this script runs from inside the removed directory.
+cd "$HOME" || cd /
 if ! rm -rf -- "$recovery_dir"; then
     _failcat "安装入口已移除，但部分文件需要手动清理：$recovery_dir" || true
 fi

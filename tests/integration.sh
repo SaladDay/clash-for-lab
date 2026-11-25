@@ -105,7 +105,7 @@ fi
         '    ;;' \
         '*)' \
         '    case "$1" in' \
-        '    ".system-proxy.enable // true") sed -n "s/^  enable: //p" "$2" ;;' \
+        '    ".system-proxy.enable") sed -n "s/^  enable: //p" "$2" ;;' \
         '    ".authentication[0] // \"\"") printf "%s\n" "user:pass" ;;' \
         '    *) exit 95 ;;' \
         '    esac' \

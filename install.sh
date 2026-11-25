@@ -84,6 +84,92 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+# Data and helpers that both a fresh install and a refresh must provide.
+# Existing GEO files are kept: users may have replaced them.
+_install_support_files() {
+    local data
+    for data in "$RESOURCES_BASE_DIR"/*.mmdb "$RESOURCES_BASE_DIR"/*.dat; do
+        [ -f "$data" ] || continue
+        [ -e "$MIHOMO_BASE_DIR/${data##*/}" ] ||
+            cp "$data" "$MIHOMO_BASE_DIR/" || return 1
+    done
+    if [ -f uninstall.sh ]; then
+        cp uninstall.sh "$MIHOMO_BASE_DIR/uninstall.sh" || return 1
+    fi
+}
+
+_install_launcher() {
+    command -v _launcher_install >/dev/null 2>&1 || return 0
+    _launcher_install || _failcat '未能创建 ~/.local/bin/clash，不影响使用' || true
+}
+
+_install_is_complete() {
+    [ -x "${MIHOMO_BASE_DIR}/bin/mihomo" ] && [ -x "${MIHOMO_BASE_DIR}/bin/yq" ] &&
+        [ -f "${MIHOMO_SCRIPT_DIR}/common.sh" ] && [ -f "$MIHOMO_CONFIG_RAW" ]
+}
+
+# Running the installer again is an update, never a dead end.
+_install_update_existing() {
+    _okcat '🔄' '检测到已安装，升级管理脚本并保留现有配置'
+    _install_script_release || _error_quit "刷新管理脚本失败"
+    _install_support_files || _error_quit "更新支持文件失败"
+    _install_launcher
+    if [ -n "$INSTALL_URL" ]; then
+        clashupdate "$INSTALL_URL" || _error_quit "订阅更新失败，原配置未改动"
+    fi
+    if ! is_mihomo_running; then
+        clashon || _error_quit "mihomo 启动失败，请用 clash log 查看原因"
+    fi
+}
+
+_install_check_connectivity() {
+    local auth secret
+    _okcat '⏳' '正在检测能否通过代理访问外网...'
+    _get_proxy_port
+    _get_ui_port
+    auth=$("$BIN_YQ" '.authentication[0] // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    secret=$("$BIN_YQ" '.secret // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+    MIHOMO_PROBE_TIMEOUT=10
+    case "$(_connectivity_check "$UI_PORT" "$MIXED_PORT" "$secret" "$auth")" in
+    ok|api_fail) _okcat '✅' "代理可用：http://127.0.0.1:${MIXED_PORT}" ;;
+    *) _failcat '⚠️' '代理已启动，但当前节点不通；执行 clash node best 自动选择可用节点' || true ;;
+    esac
+}
+
+_install_finish() {
+    command -v _connectivity_check >/dev/null 2>&1 && _install_check_connectivity
+    _okcat '🎉' '安装完成，新开的终端会自动使用代理'
+    cat <<'EOF'
+
+  clash node         选择节点          clash status   查看状态
+  clash node best    自动选最快节点    clash off/on   关闭/开启
+  clash update       更新订阅          clash help     全部命令
+
+EOF
+    if [ -z "${CLASH_INSTALL_NO_SHELL:-}" ] && [ -t 0 ] && [ -t 1 ]; then
+        cd "$HOME" || true
+        _quit
+    fi
+    _okcat '💡' "当前终端立即生效：exec ${SHELL:-bash}"
+}
+
+# Give a mistyped URL another chance instead of throwing the install away.
+_install_prompt_url() {
+    local attempt=0
+    while [ "$attempt" -lt 3 ]; do
+        printf '%s' "$(_okcat '✈️ ' '输入订阅地址：')"
+        IFS= read -r url || {
+            printf '\n'
+            _error_quit "没有可用终端输入订阅地址，请执行：bash install.sh '订阅地址'"
+        }
+        url=$(printf '%s' "$url" | tr -d '[:space:]')
+        _is_valid_subscription_url "$url" && return 0
+        _failcat '订阅地址必须以 http:// 或 https:// 开头' || true
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
 INSTALL_URL=""
 
 while [ $# -gt 0 ]; do
@@ -100,6 +186,8 @@ while [ $# -gt 0 ]; do
             _error_quit "已安装环境缺少 yq，无法启用内核升级：${MIHOMO_BASE_DIR}/bin/yq"
         fi
         _install_script_release || _error_quit "刷新管理脚本失败"
+        _install_support_files || _error_quit "更新支持文件失败"
+        _install_launcher
         _upgrade_release_lock
         INSTALL_LOCK_HELD=false
         MIHOMO_OPERATION_LOCK_HELD=false
@@ -112,12 +200,16 @@ while [ $# -gt 0 ]; do
         INSTALL_URL=$2
         shift 2
         ;;
+    http://*|https://*)
+        INSTALL_URL=$1
+        shift
+        ;;
     --)
         shift
         break
         ;;
     *)
-        _error_quit "未知参数：$1（可用：--url <订阅地址>）"
+        _error_quit "未知参数：$1（用法：bash install.sh ['订阅地址']）"
         ;;
     esac
 done
@@ -133,8 +225,18 @@ _upgrade_acquire_lock || _error_quit "另一个 mihomo 操作正在运行"
 INSTALL_LOCK_HELD=true
 MIHOMO_OPERATION_LOCK_HELD=true
 
+if [ -d "$MIHOMO_BASE_DIR" ] && [ ! -L "$MIHOMO_BASE_DIR" ] && _install_is_complete; then
+    _install_update_existing
+    _upgrade_release_lock
+    INSTALL_LOCK_HELD=false
+    MIHOMO_OPERATION_LOCK_HELD=false
+    _install_finish
+    exit 0
+fi
+
 [ ! -e "$MIHOMO_BASE_DIR" ] && [ ! -L "$MIHOMO_BASE_DIR" ] ||
-    _error_quit "请先执行卸载脚本,以清除安装路径：$MIHOMO_BASE_DIR"
+    _error_quit "安装目录已存在但不完整：$MIHOMO_BASE_DIR
+   请先执行 bash uninstall.sh，或把该目录移走后重试"
 
 # 创建用户目录结构
 mkdir -p "$(dirname "$MIHOMO_BASE_DIR")" || _error_quit "创建安装父目录失败：$(dirname "$MIHOMO_BASE_DIR")"
@@ -172,11 +274,7 @@ install_data_manifest="${MIHOMO_BASE_DIR}/tmp/install-validation-data.manifest"
 
 # Mihomo resolves GEO databases and relative provider paths from its HomeDir.
 # Install local data before validating a candidate stored under tmp/.
-for resource_data in "$RESOURCES_BASE_DIR"/*.mmdb "$RESOURCES_BASE_DIR"/*.dat; do
-    [ -f "$resource_data" ] || continue
-    cp "$resource_data" "$MIHOMO_BASE_DIR/" ||
-        _error_quit "安装配置数据失败：$resource_data"
-done
+_install_support_files || _error_quit "安装配置数据失败"
 
 # 仓库配置只作为只读输入；校验和下载在安装目录的临时文件中进行。
 install_config_candidate=$(mktemp "${MIHOMO_BASE_DIR}/tmp/install-config.XXXXXX") ||
@@ -195,8 +293,7 @@ if [ "$repo_config_usable" != true ]; then
     if [ -n "$INSTALL_URL" ]; then
         url=$INSTALL_URL
     else
-        echo -n "$(_okcat '✈️ ' '输入订阅：')"
-        read -r url
+        _install_prompt_url || true
     fi
     _is_valid_subscription_url "$url" ||
         _error_quit "订阅地址无效，必须是完整的小写 http:// 或 https:// URL"
@@ -237,12 +334,13 @@ done
 _install_secure_mixin "$MIHOMO_CONFIG_MIXIN" ||
     _error_quit "生成本机 Web 控制台密钥失败"
 
-# 解压 zashboard UI
-if ! unzip -q -o "$ZIP_UI" -d "$MIHOMO_BASE_DIR"; then
-    _error_quit "解压 UI 文件失败: $ZIP_UI"
+# 解压 zashboard UI。控制台是可选功能，没有解压工具也不能挡住代理本身。
+if _extract_zip "$ZIP_UI" "$MIHOMO_BASE_DIR" && [ -d "${MIHOMO_BASE_DIR}/dist" ]; then
+    mv "${MIHOMO_BASE_DIR}/dist" "${MIHOMO_BASE_DIR}/ui" || _error_quit "安装 UI 失败"
+else
+    rm -rf "${MIHOMO_BASE_DIR}/dist"
+    _failcat '⚠️' '缺少 unzip 或 python，已跳过 Web 控制台；可用 clash node 管理节点' || true
 fi
-[ -d "${MIHOMO_BASE_DIR}/dist" ] || _error_quit "UI 压缩包中缺少 dist 目录"
-mv "${MIHOMO_BASE_DIR}/dist" "${MIHOMO_BASE_DIR}/ui" || _error_quit "安装 UI 失败"
 
 # 启动代理服务（会自动合并配置和检查端口冲突）
 INSTALL_SERVICE_TOUCHED=true
@@ -253,32 +351,11 @@ mihomoctl on || _error_quit "mihomo 启动失败，安装已回滚"
 INSTALL_RC_TOUCHED=true
 _set_rc || _error_quit "写入 shell 配置失败"
 
-# 显示 Web UI 信息（启动后显示实际端口）
-clashui
+_install_launcher
 
 INSTALL_OWNS_BASE=false
 _upgrade_release_lock
 INSTALL_LOCK_HELD=false
 MIHOMO_OPERATION_LOCK_HELD=false
 
-_okcat '🎉' 'mihomo 用户空间代理已安装完成！'
-_okcat '📝' '使用说明：'
-_okcat '💡' '命令前缀: clash | mihomo | mihomoctl'
-_okcat '  • 开启/关闭: clash on/off'
-_okcat '  • 重启服务: clash restart'
-_okcat '  • 查看状态: clash status'
-_okcat '  • 诊断修复: clash doctor'
-_okcat '  • Web控制台: clash ui'
-_okcat '  • TUI控制台: clash tui'
-_okcat '  • 更新订阅: clash update [URL|log]'
-_okcat '  • 设置订阅: clash subscribe [URL]'
-_okcat '  • 升级内核: clash upgrade'
-_okcat '  • 回滚内核: clash upgrade rollback'
-_okcat '  • 系统代理: clash proxy [on|off|status]'
-_okcat '  • 局域网访问: clash lan [on|off|status]'
-_okcat ''
-_okcat '🏠' "安装目录: $MIHOMO_BASE_DIR"
-_okcat '📁' "配置目录: $MIHOMO_BASE_DIR/config/"
-_okcat '📋' "日志目录: $MIHOMO_BASE_DIR/logs/"
-
-_quit
+_install_finish

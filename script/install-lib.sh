@@ -66,6 +66,10 @@ _install_script_release() (
         cat "$stage/upgrade.sh"
         printf '\n'
         cat "$stage/clashctl.sh"
+        if [ -f "$stage/node.sh" ]; then
+            printf '\n'
+            cat "$stage/node.sh"
+        fi
     } > "$stage/managed.sh" || return 1
     bash -n "$stage"/*.sh || return 1
     if command -v zsh >/dev/null 2>&1; then

@@ -19,6 +19,15 @@ _apply_system_proxy_environment() {
     export NO_PROXY=$no_proxy_addr
 }
 
+# yq's `//` treats an explicit `false` like a missing value, so the default has
+# to be applied here: only a literal `false` turns the preference off.
+_system_proxy_preference() {
+    local value
+    value=$("$BIN_YQ" '.system-proxy.enable' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null) || return 1
+    [ "$value" = false ] || value=true
+    printf '%s\n' "$value"
+}
+
 _set_system_proxy() {
     [ -f "$MIHOMO_CONFIG_RUNTIME" ] || {
         _failcat "运行时配置文件不存在: $MIHOMO_CONFIG_RUNTIME"
@@ -26,9 +35,7 @@ _set_system_proxy() {
     }
 
     local auth system_proxy_status
-    system_proxy_status=$(
-        "$BIN_YQ" '.system-proxy.enable // true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null
-    ) || {
+    system_proxy_status=$(_system_proxy_preference) || {
         _failcat "无法读取系统代理偏好"
         return 1
     }
@@ -436,7 +443,7 @@ watch_proxy() {
     [[ $- == *i* ]] || return 0
 
     local system_proxy_status
-    system_proxy_status=$("$BIN_YQ" '.system-proxy.enable // true' "$MIHOMO_CONFIG_MIXIN" 2>/dev/null)
+    system_proxy_status=$(_system_proxy_preference)
 
     if [ -z "${http_proxy:-}" ]; then
         # New interactive shell without inherited proxy variables.
@@ -753,7 +760,7 @@ EOF
 #
 # Timeouts are short (2–5 s) so that clash status stays interactive.
 _connectivity_check() {
-    local ui_port=$1 proxy_port=$2 secret=${3:-}
+    local ui_port=$1 proxy_port=$2 secret=${3:-} auth=${4:-}
     local api_ok=false proxy_ok=false
     local api_args
 
@@ -768,12 +775,18 @@ _connectivity_check() {
     curl "${api_args[@]}" "http://127.0.0.1:${ui_port}/version" 2>/dev/null &&
         api_ok=true
 
-    curl --disable --silent --show-error --fail \
-        --connect-timeout 3 --max-time 5 \
-        --proxy "http://127.0.0.1:${proxy_port}" \
-        --noproxy '*' \
-        --output /dev/null \
-        'http://www.gstatic.com/generate_204' 2>/dev/null &&
+    # gstatic.com resolves to mainland addresses and is usually routed DIRECT, so
+    # it answers even when every node is dead; google.com must use a node.
+    # --noproxy '' matches nothing. '*' would bypass --proxy and report the
+    # server's own direct connectivity instead.
+    { [ -z "$auth" ] || _curl_config_line proxy-user "$auth"; } |
+        curl --disable --silent --show-error --fail \
+            --connect-timeout 3 --max-time "${MIHOMO_PROBE_TIMEOUT:-5}" \
+            --proxy "http://127.0.0.1:${proxy_port}" \
+            --noproxy '' \
+            --output /dev/null \
+            --config - \
+            'http://www.google.com/generate_204' 2>/dev/null &&
         proxy_ok=true
 
     if [ "$api_ok" = true ] && [ "$proxy_ok" = true ]; then
@@ -787,6 +800,12 @@ _connectivity_check() {
     fi
 }
 
+_mask_subscription_url() {
+    local scheme=${1%%://*} rest=${1#*://}
+    rest=${rest%%[/?#]*}
+    printf '%s://%s/***\n' "$scheme" "${rest##*@}"
+}
+
 function clashstatus() {
     local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
     local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
@@ -798,7 +817,8 @@ function clashstatus() {
     # Show subscription URL
     local subscription_url=$(cat "$MIHOMO_CONFIG_URL" 2>/dev/null)
     if [ -n "$subscription_url" ]; then
-        _okcat "订阅地址: $subscription_url"
+        # The path and query carry the token; status output gets pasted into issues.
+        _okcat "订阅地址: $(_mask_subscription_url "$subscription_url")（完整地址: clash subscribe）"
     else
         _failcat "订阅地址: 未设置"
     fi
@@ -834,12 +854,13 @@ function clashstatus() {
 
             # Connectivity probe
             if [ "$probe" = true ]; then
-                local secret connectivity
+                local secret connectivity auth
                 secret=$("$BIN_YQ" '.secret // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
-                connectivity=$(_connectivity_check "$UI_PORT" "$MIXED_PORT" "$secret")
+                auth=$("$BIN_YQ" '.authentication[0] // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+                connectivity=$(_connectivity_check "$UI_PORT" "$MIXED_PORT" "$secret" "$auth")
                 case "$connectivity" in
                 ok)         _okcat '✅' '连通性: 正常' ;;
-                proxy_fail) _failcat '⚠️' '连通性: 代理端口可达但无法出网' || true ;;
+                proxy_fail) _failcat '⚠️' '连通性: 当前节点无法出网，试试 clash node best' || true ;;
                 api_fail)   _failcat '⚠️' '连通性: 代理正常但管理 API 不可达' || true ;;
                 down)       _failcat '❌' '连通性: 代理端口和管理 API 均不可达' || true ;;
                 esac
@@ -862,11 +883,13 @@ function clashstatus() {
 
 function clashui() {
     _get_ui_port || return 1
-    _okcat "本机 Web 控制台：http://127.0.0.1:${UI_PORT}/ui"
-    _okcat "远程访问请在自己的电脑建立 SSH 隧道："
-    printf 'ssh -L %s:127.0.0.1:%s user@server\n' "$UI_PORT" "$UI_PORT"
-    _okcat "隧道建立后打开：http://127.0.0.1:${UI_PORT}/ui"
-    _okcat "管理 API 默认仅监听本机，无需在防火墙中放行该端口。"
+    local host
+    host=$(hostname -f 2>/dev/null || hostname 2>/dev/null)
+    _okcat "第 1 步，在自己的电脑上执行（主机名和 SSH 端口按你平时的登录方式调整）："
+    printf '  ssh -L %s:127.0.0.1:%s -N %s@%s\n' "$UI_PORT" "$UI_PORT" \
+        "$(id -un 2>/dev/null || printf user)" "${host:-server}"
+    _okcat "第 2 步，在自己电脑的浏览器打开：http://127.0.0.1:${UI_PORT}/ui"
+    _okcat "首次登录：主机 127.0.0.1，端口 ${UI_PORT}，密钥用 clash secret 查看"
 }
 
 function clashtui() {
@@ -1263,12 +1286,13 @@ function clashsubscribe() {
         _mihomo_run_locked _clashsubscribe_set_locked "$new_url" || return 1
         _okcat "订阅地址已保存"
 
-        printf "是否立即更新订阅配置? [y/N]: "
+        # Enter means yes, but a closed stdin (scripts) never triggers an update.
+        printf "是否立即更新订阅配置? [Y/n]: "
         if ! IFS= read -r response; then
-            response=
+            response=n
         fi
         case "$response" in
-        [yY]|[yY][eE][sS])
+        ''|[yY]|[yY][eE][sS])
             # Read the URL again under the update lock. If another clash command
             # changed it while this prompt was open, the current value wins.
             clashupdate
@@ -1729,28 +1753,38 @@ function clashlog() {
 MIHOMO_WATCHDOG_PID_FILE="${MIHOMO_BASE_DIR}/config/watchdog.pid"
 MIHOMO_WATCHDOG_INTERVAL=30
 
+# A recycled PID must not be mistaken for (or killed as) our watchdog.
+_watchdog_pid_matches() {
+    local pid=$1 command_line
+    _process_is_current_user_live "$pid" 2>/dev/null || return 1
+    command_line=$(ps -ww -p "$pid" -o args= 2>/dev/null) || return 1
+    case "$command_line " in
+    *"/watchdog.sh $MIHOMO_BASE_DIR "*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
 _watchdog_is_running() {
     local pid
     pid=$(cat "$MIHOMO_WATCHDOG_PID_FILE" 2>/dev/null || true)
-    [ -n "$pid" ] && _process_is_current_user_live "$pid" 2>/dev/null
+    [ -n "$pid" ] && _watchdog_pid_matches "$pid"
 }
 
 _watchdog_stop() {
-    local pid start_id exec_id
+    local pid
     pid=$(cat "$MIHOMO_WATCHDOG_PID_FILE" 2>/dev/null || true)
     [ -n "$pid" ] || return 0
-    _process_is_current_user_live "$pid" 2>/dev/null || {
+    _watchdog_pid_matches "$pid" || {
         rm -f "$MIHOMO_WATCHDOG_PID_FILE"
         return 0
     }
-    start_id=$(_process_start_id "$pid" 2>/dev/null || true)
     kill "$pid" 2>/dev/null || true
     local count=0
-    while _process_is_current_user_live "$pid" 2>/dev/null && [ "$count" -lt 50 ]; do
+    while _watchdog_pid_matches "$pid" && [ "$count" -lt 50 ]; do
         sleep 0.1
         count=$((count + 1))
     done
-    _process_is_current_user_live "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    _watchdog_pid_matches "$pid" && kill -9 "$pid" 2>/dev/null || true
     rm -f "$MIHOMO_WATCHDOG_PID_FILE"
 }
 
@@ -1805,8 +1839,78 @@ function clashwatchdog() {
     esac
 }
 
+# Run one command through the proxy without changing the current shell.
+function clashrun() {
+    [ $# -gt 0 ] || {
+        _failcat "用法: clash run <命令> [参数...]" || true
+        return 1
+    }
+    is_mihomo_running || {
+        _failcat "代理未运行，请先执行 clash on" || true
+        return 1
+    }
+    (
+        _get_proxy_port
+        auth=$("$BIN_YQ" '.authentication[0] // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+        _apply_system_proxy_environment "${auth:+$auth@}"
+        "$@"
+    )
+}
+
+# Print assignments for `eval`, for sbatch scripts and other plain shells.
+function clashenv() {
+    is_mihomo_running || {
+        _failcat "代理未运行，请先执行 clash on" || true
+        return 1
+    }
+    (
+        _get_proxy_port
+        auth=$("$BIN_YQ" '.authentication[0] // ""' "$MIHOMO_CONFIG_RUNTIME" 2>/dev/null)
+        _apply_system_proxy_environment "${auth:+$auth@}"
+        printf 'export http_proxy=%q https_proxy=%q HTTP_PROXY=%q HTTPS_PROXY=%q\n' \
+            "$http_proxy" "$https_proxy" "$HTTP_PROXY" "$HTTPS_PROXY"
+        printf 'export all_proxy=%q ALL_PROXY=%q no_proxy=%q NO_PROXY=%q\n' \
+            "$all_proxy" "$ALL_PROXY" "$no_proxy" "$NO_PROXY"
+    )
+}
+
+function clashuninstall() {
+    local answer uninstaller="${MIHOMO_BASE_DIR}/uninstall.sh"
+    [ -f "$uninstaller" ] || {
+        _failcat "缺少 ${uninstaller}，请在仓库目录执行 bash uninstall.sh" || true
+        return 1
+    }
+    if [ "${1:-}" != -y ]; then
+        printf '将停止代理并删除 %s（含订阅配置），继续? [y/N]: ' "$MIHOMO_BASE_DIR"
+        IFS= read -r answer || answer=
+        case "$answer" in
+        [yY]|[yY][eE][sS]) ;;
+        *) return 1 ;;
+        esac
+    fi
+    bash "$uninstaller" </dev/null || return 1
+    if _proxy_env_is_loopback; then
+        _unset_system_proxy
+    fi
+}
+
+MIHOMO_LAUNCHER="${HOME}/.local/bin/clash"
+
+# Never replace a `clash` the user already has; only ever remove our own link.
+_launcher_install() {
+    [ ! -e "$MIHOMO_LAUNCHER" ] && [ ! -L "$MIHOMO_LAUNCHER" ] || return 0
+    mkdir -p "$(dirname "$MIHOMO_LAUNCHER")" &&
+        ln -s "${MIHOMO_SCRIPT_DIR}/clash-cli" "$MIHOMO_LAUNCHER"
+}
+
+_launcher_remove() {
+    [ "$(readlink "$MIHOMO_LAUNCHER" 2>/dev/null)" = "${MIHOMO_SCRIPT_DIR}/clash-cli" ] || return 0
+    rm -f "$MIHOMO_LAUNCHER"
+}
+
 function clashctl() {
-    case "$1" in
+    local help_status=0
+    case "${1:-}" in
     on)
         clashon
         ;;
@@ -1866,12 +1970,36 @@ function clashctl() {
         clashdoctor
         ;;
     log)
+        shift
         clashlog "$@"
         ;;
     watchdog)
+        shift
         clashwatchdog "$@"
         ;;
+    node)
+        shift
+        clashnode "$@"
+        ;;
+    run)
+        shift
+        clashrun "$@"
+        ;;
+    env)
+        clashenv
+        ;;
+    uninstall)
+        shift
+        clashuninstall "$@"
+        ;;
     *)
+        case "${1:-}" in
+        ''|help|-h|--help) ;;
+        *)
+            _failcat "未知命令：$1" || true
+            help_status=1
+            ;;
+        esac
         cat <<EOF
 
 Usage:
@@ -1882,6 +2010,9 @@ Usage:
 Commands:
     on                      开启代理
     off                     关闭代理
+    node     [ls|use|test|best]    查看、切换、测速节点
+    run      COMMAND...     仅让这一条命令走代理
+    env                     输出代理变量，用于 eval "\$(clash env)"
     restart                 重启代理服务
     status  [--no-probe]    进程运行状态与连通性检测
     doctor                  诊断并修复代理环境
@@ -1898,6 +2029,7 @@ Commands:
     upgrade  [rollback|status]     升级或回滚 mihomo 稳定版内核
     log      [N]            查看最近 N 行运行日志（默认 50）
     watchdog [on|off|status]    进程崩溃自恢复
+    uninstall [-y]          停止并卸载
 
 说明:
     • 用户空间运行，无需 sudo 权限
@@ -1906,6 +2038,7 @@ Commands:
     • 进程管理: 基于 PID 文件和 nohup
 
 EOF
+        return "$help_status"
         ;;
     esac
 }

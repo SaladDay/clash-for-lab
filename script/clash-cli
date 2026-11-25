@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Command-line entry for scripts, sbatch jobs and non-interactive shells.
+# Interactive shells use the function loaded from the RC file instead, because
+# only a function can change that shell's proxy variables.
+# shellcheck disable=SC1091
+. "${HOME}/tools/mihomo/script/managed.sh" || exit 1
+clashctl "$@"

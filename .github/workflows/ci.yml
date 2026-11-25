@@ -28,12 +28,12 @@ jobs:
 
       - name: Check shell syntax
         run: |
-          bash -n install.sh uninstall.sh script/*.sh tools/*.sh tests/*.sh
+          bash -n install.sh uninstall.sh get.sh script/clash-cli script/*.sh tools/*.sh tests/*.sh
           zsh -n install.sh uninstall.sh script/*.sh tests/*.zsh
 
       - name: Run ShellCheck
         run: |
-          shellcheck --severity=error install.sh uninstall.sh script/*.sh
+          shellcheck --severity=error install.sh uninstall.sh get.sh script/clash-cli script/*.sh
           shellcheck --severity=error tools/*.sh tests/*.sh
 
       - name: Test bundle sync
@@ -80,6 +80,8 @@ jobs:
           zsh tests/log-cmd.sh
           tests/download-error.sh
           zsh tests/download-error.sh
+          tests/one-click.sh
+          zsh tests/one-click.sh
           tests/watchdog.sh
           zsh tests/watchdog.sh
           tests/subscription.sh
