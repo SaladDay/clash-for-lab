@@ -669,7 +669,7 @@ _upgrade_apply_transaction() (
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_PREVIOUS" false false || exit 1
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_STATE_LOCK" false false || exit 1
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_PREVIOUS_STATE" false false || exit 1
-    port_state=${MIHOMO_PORT_STATE:-"${MIHOMO_BASE_DIR}/config/ports.conf"}
+    port_state=${MIHOMO_PORT_STATE:-"${MIHOMO_BASE_DIR}/config/ports${MIHOMO_HOST_SUFFIX:-}.conf"}
     _upgrade_managed_file_ok "$port_state" false false || exit 1
     tmpdir=$(_upgrade_make_tmp_dir) || exit 1
     _upgrade_info "正在检查仓库中的最新稳定版..."
@@ -753,7 +753,7 @@ _upgrade_rollback_transaction() (
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_PREVIOUS" true true || { _upgrade_fail "没有可回滚的上一版内核"; exit 1; }
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_STATE_LOCK" true false || exit 1
     _upgrade_managed_file_ok "$MIHOMO_UPGRADE_PREVIOUS_STATE" true false || exit 1
-    port_state=${MIHOMO_PORT_STATE:-"${MIHOMO_BASE_DIR}/config/ports.conf"}
+    port_state=${MIHOMO_PORT_STATE:-"${MIHOMO_BASE_DIR}/config/ports${MIHOMO_HOST_SUFFIX:-}.conf"}
     _upgrade_managed_file_ok "$port_state" false false || exit 1
     _upgrade_binary_matches_state "$MIHOMO_UPGRADE_PREVIOUS" "$MIHOMO_UPGRADE_PREVIOUS_STATE" >/dev/null 2>&1 || { _upgrade_fail "上一版内核状态不匹配"; exit 1; }
     restored_version=$UPGRADE_STATE_VERSION

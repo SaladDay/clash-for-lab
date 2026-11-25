@@ -58,6 +58,43 @@ set -u
         fail 'best node is not the fastest real proxy'
 )
 
+# ── machines sharing $HOME keep separate runtime state ─────────────
+
+(
+    MIHOMO_PRIMARY_HOST="$test_root/primary-host"
+    CLASH_HOST_ID=nodeA _set_host_suffix
+    [ -z "$MIHOMO_HOST_SUFFIX" ] || fail 'unclaimed install must use plain names'
+    printf nodeA > "$MIHOMO_PRIMARY_HOST"
+    CLASH_HOST_ID=nodeA _set_host_suffix
+    [ -z "$MIHOMO_HOST_SUFFIX" ] || fail 'primary host must use plain names'
+    CLASH_HOST_ID=node.B _set_host_suffix
+    [ "$MIHOMO_HOST_SUFFIX" = .node_B ] || fail 'second host must be separated'
+)
+
+# ── recovery after a reboot, at most one failing attempt ───────────
+
+(
+    MIHOMO_BASE_DIR="$test_root/recover"
+    MIHOMO_AUTOSTART_OFF="$MIHOMO_BASE_DIR/config/autostart.off"
+    mkdir -p "$MIHOMO_BASE_DIR/config"
+    pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    calls="$test_root/recover.calls"
+    _okcat() { :; }
+    _failcat() { return 1; }
+    is_mihomo_running() { return 1; }
+    _mihomo_run_locked() { printf 'x\n' >> "$calls"; return 1; }
+    _watch_proxy_recover
+    [ ! -e "$calls" ] || fail 'recovered after a deliberate stop'
+    printf '999999\n' > "$pid_file"
+    : > "$MIHOMO_AUTOSTART_OFF"
+    _watch_proxy_recover
+    [ ! -e "$calls" ] || fail 'recovered although disabled'
+    rm "$MIHOMO_AUTOSTART_OFF"
+    _watch_proxy_recover
+    _watch_proxy_recover
+    [ "$(wc -l < "$calls" | tr -d ' ')" = 1 ] || fail 'a failing recovery was repeated'
+)
+
 # ── node name resolution ───────────────────────────────────────────
 
 (

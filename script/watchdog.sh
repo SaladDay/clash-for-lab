@@ -11,14 +11,14 @@ set -o pipefail
 
 base_dir=${1:?}
 interval=${2:-30}
-pid_file="${base_dir}/config/mihomo.pid"
-watchdog_pid_file="${base_dir}/config/watchdog.pid"
 script_dir="${base_dir}/script"
 
 # Load management functions
 . "${script_dir}/common.sh"
 . "${script_dir}/upgrade.sh"
 . "${script_dir}/clashctl.sh"
+pid_file="${base_dir}/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
+watchdog_pid_file="${base_dir}/config/watchdog${MIHOMO_HOST_SUFFIX:-}.pid"
 
 _self_alive() {
     local my_pid=$$ stored_pid

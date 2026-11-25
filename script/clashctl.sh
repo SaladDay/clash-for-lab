@@ -329,7 +329,7 @@ _clashon_unlocked() {
 
 # 验证实际监听端口与配置是否一致
 _verify_actual_ports() {
-    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo${MIHOMO_HOST_SUFFIX:-}.log"
     [ ! -f "$log_file" ] && return 0
 
     # Extract actual listening ports from log
@@ -439,8 +439,43 @@ _watch_proxy_cleanup() {
     fi
 }
 
+MIHOMO_AUTOSTART_OFF="${MIHOMO_BASE_DIR}/config/autostart.off"
+
+# The PID file outlives a reboot or an OOM kill but not `clash off`, so a dead
+# PID file means "the user still wants it running on this machine".
+_watch_proxy_recover() {
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
+    [ -f "$pid_file" ] && [ ! -e "$MIHOMO_AUTOSTART_OFF" ] || return 0
+    is_mihomo_running && return 0
+    _okcat '🔄' '代理曾意外停止（如机器重启），正在恢复...' >&2
+    if ! _mihomo_run_locked _clashon_locked >/dev/null 2>&1; then
+        # One attempt only: a broken setup must not slow down every login.
+        is_mihomo_running || rm -f "$pid_file"
+        _failcat '自动恢复失败，请执行 clash on 查看原因' || true
+    fi
+}
+
+function clashautostart() {
+    case "${1:-status}" in
+    on) rm -f "$MIHOMO_AUTOSTART_OFF" && _okcat '登录时自动恢复：已开启' ;;
+    off) : > "$MIHOMO_AUTOSTART_OFF" && _okcat '登录时自动恢复：已关闭' ;;
+    status)
+        if [ -e "$MIHOMO_AUTOSTART_OFF" ]; then
+            _okcat '登录时自动恢复：已关闭'
+        else
+            _okcat '登录时自动恢复：已开启'
+        fi
+        ;;
+    *)
+        _failcat '用法: clash autostart [on|off|status]' || true
+        return 1
+        ;;
+    esac
+}
+
 watch_proxy() {
     [[ $- == *i* ]] || return 0
+    _watch_proxy_recover
 
     local system_proxy_status
     system_proxy_status=$(_system_proxy_preference)
@@ -807,8 +842,8 @@ _mask_subscription_url() {
 }
 
 function clashstatus() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
-    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo${MIHOMO_HOST_SUFFIX:-}.log"
     local pid='' managed_pids='' uptime=''
     local probe=true
 
@@ -1151,7 +1186,7 @@ _tunon() {
 
     # Check if mihomo is running and tun mode is working
     if is_mihomo_running; then
-        local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+        local log_file="$MIHOMO_BASE_DIR/logs/mihomo${MIHOMO_HOST_SUFFIX:-}.log"
         # Check recent log entries for tun mode status
         if [ -f "$log_file" ]; then
             # Look for tun-related messages in the last few lines
@@ -1630,7 +1665,7 @@ function clashdoctor() {
     # 1. Process status
     if is_mihomo_running; then
         local pid
-        pid=$(cat "$MIHOMO_BASE_DIR/config/mihomo.pid" 2>/dev/null || true)
+        pid=$(cat "$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid" 2>/dev/null || true)
         _okcat '✅' "mihomo 进程: 运行中 (PID: ${pid:-未知})"
     else
         _failcat '❌' 'mihomo 进程: 未运行' || true
@@ -1723,7 +1758,7 @@ function clashdoctor() {
 }
 
 function clashlog() {
-    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo${MIHOMO_HOST_SUFFIX:-}.log"
     local lines=50
 
     [ -f "$log_file" ] && [ ! -L "$log_file" ] || {
@@ -1750,7 +1785,7 @@ function clashlog() {
     esac
 }
 
-MIHOMO_WATCHDOG_PID_FILE="${MIHOMO_BASE_DIR}/config/watchdog.pid"
+MIHOMO_WATCHDOG_PID_FILE="${MIHOMO_BASE_DIR}/config/watchdog${MIHOMO_HOST_SUFFIX:-}.pid"
 MIHOMO_WATCHDOG_INTERVAL=30
 
 # A recycled PID must not be mistaken for (or killed as) our watchdog.
@@ -1985,6 +2020,10 @@ function clashctl() {
         shift
         clashrun "$@"
         ;;
+    autostart)
+        shift
+        clashautostart "$@"
+        ;;
     env)
         clashenv
         ;;
@@ -2029,6 +2068,7 @@ Commands:
     upgrade  [rollback|status]     升级或回滚 mihomo 稳定版内核
     log      [N]            查看最近 N 行运行日志（默认 50）
     watchdog [on|off|status]    进程崩溃自恢复
+    autostart [on|off|status]   重启或崩溃后，登录时自动恢复
     uninstall [-y]          停止并卸载
 
 说明:

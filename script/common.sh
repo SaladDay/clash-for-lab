@@ -25,7 +25,23 @@ MIHOMO_CONFIG_URL="${MIHOMO_BASE_DIR}/url"
 MIHOMO_CONFIG_RAW="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG)"
 MIHOMO_CONFIG_RAW_BAK="${MIHOMO_CONFIG_RAW}.bak"
 MIHOMO_CONFIG_MIXIN="${MIHOMO_BASE_DIR}/$(basename $RESOURCES_CONFIG_MIXIN)"
-MIHOMO_CONFIG_RUNTIME="${MIHOMO_BASE_DIR}/runtime.yaml"
+# Lab clusters often share $HOME between machines, while processes and ports are
+# per machine. The first machine keeps the plain file names; every other one
+# gets its own runtime state so they never overwrite each other.
+_mihomo_host_id() {
+    printf '%s' "${CLASH_HOST_ID:-$(uname -n 2>/dev/null)}" | LC_ALL=C tr -c 'A-Za-z0-9_-' '_'
+}
+MIHOMO_PRIMARY_HOST="${MIHOMO_BASE_DIR}/config/primary-host"
+MIHOMO_HOST_SUFFIX=
+_set_host_suffix() {
+    local primary current
+    primary=$(cat "$MIHOMO_PRIMARY_HOST" 2>/dev/null || true)
+    current=$(_mihomo_host_id)
+    MIHOMO_HOST_SUFFIX=
+    [ -z "$primary" ] || [ "$primary" = "$current" ] || MIHOMO_HOST_SUFFIX=".${current}"
+}
+_set_host_suffix
+MIHOMO_CONFIG_RUNTIME="${MIHOMO_BASE_DIR}/runtime${MIHOMO_HOST_SUFFIX}.yaml"
 MIHOMO_UPDATE_LOG="${MIHOMO_BASE_DIR}/mihomoctl.log"
 MIHOMO_LOG_MAX_BYTES=8388608
 
@@ -255,7 +271,7 @@ _get_random_port() {
 }
 
 # 端口状态与偏好文件路径
-MIHOMO_PORT_STATE="${MIHOMO_BASE_DIR}/config/ports.conf"
+MIHOMO_PORT_STATE="${MIHOMO_BASE_DIR}/config/ports${MIHOMO_HOST_SUFFIX:-}.conf"
 MIHOMO_PORT_PREF="${MIHOMO_BASE_DIR}/config/port.pref"
 
 # 读取代理端口偏好设置
@@ -1816,8 +1832,8 @@ start_mihomo() {
 }
 
 _start_mihomo_unlocked() (
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
-    local log_file="$MIHOMO_BASE_DIR/logs/mihomo.log"
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
+    local log_file="$MIHOMO_BASE_DIR/logs/mihomo${MIHOMO_HOST_SUFFIX:-}.log"
     local pid='' pid_tmp='' pid_start_id='' pid_executable_id=''
     local managed_pids='' start_committed=false log_writer
 
@@ -1894,6 +1910,7 @@ _start_mihomo_unlocked() (
     sleep 1
     if _is_mihomo_pid "$pid"; then
         start_committed=true
+        [ -e "$MIHOMO_PRIMARY_HOST" ] || _mihomo_host_id > "$MIHOMO_PRIMARY_HOST" 2>/dev/null || true
         trap - EXIT HUP INT TERM
         _okcat "mihomo 进程启动成功 (PID: $pid)"
         return 0
@@ -1909,7 +1926,7 @@ stop_mihomo() {
 }
 
 _stop_mihomo_unlocked() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
     local managed_pids remaining pid stop_failed=false
 
     managed_pids=$(_find_managed_mihomo_pids) || {
@@ -1945,7 +1962,7 @@ EOF
 }
 
 is_mihomo_running() {
-    local pid_file="$MIHOMO_BASE_DIR/config/mihomo.pid"
+    local pid_file="$MIHOMO_BASE_DIR/config/mihomo${MIHOMO_HOST_SUFFIX:-}.pid"
     local pid managed_pids
 
     pid=$(cat "$pid_file" 2>/dev/null || true)
